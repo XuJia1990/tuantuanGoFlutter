@@ -38,8 +38,16 @@ class ApiClient {
   final AppStorage _storage;
   late final Dio _dio;
 
-  Future<dynamic> get(String path, {Map<String, dynamic>? query}) async {
-    final response = await _dio.get<dynamic>(path, queryParameters: query);
+  Future<dynamic> get(
+    String path, {
+    Map<String, dynamic>? query,
+    Map<String, dynamic>? headers,
+  }) async {
+    final response = await _dio.get<dynamic>(
+      path,
+      queryParameters: query,
+      options: headers == null ? null : Options(headers: headers),
+    );
     return response.data;
   }
 
