@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../storage/app_storage.dart';
 import 'api_config.dart';
@@ -29,10 +31,7 @@ class ApiClient {
       InterceptorsWrapper(
         onRequest: (options, handler) async {
           options.extra[_requestStartKey] = DateTime.now();
-          final token = await _storage.getAccessToken();
-          final userId = await _storage.getUserId();
-          if (token != null) options.headers['Authorization'] = 'Bearer $token';
-          if (userId != null) options.headers['userId'] = userId;
+          await _applyCommonHeaders(options);
           _logRequest(options);
           handler.next(options);
         },
@@ -51,6 +50,7 @@ class ApiClient {
   static const _requestStartKey = 'requestStart';
 
   final AppStorage _storage;
+  final Future<PackageInfo> _packageInfo = PackageInfo.fromPlatform();
   late final Dio _dio;
 
   Future<dynamic> get(
@@ -79,6 +79,55 @@ class ApiClient {
   Future<dynamic> delete(String path, {Object? data}) async {
     final response = await _dio.delete<dynamic>(path, data: data);
     return response.data;
+  }
+
+  Future<void> _applyCommonHeaders(RequestOptions options) async {
+    final token = await _storage.getAccessToken();
+    final userId = await _storage.getUserId();
+    final deviceId = await _storage.getDeviceId();
+    final packageInfo = await _packageInfo;
+
+    final requestLongitude = _headerString(options.headers, 'longitude');
+    final requestLatitude = _headerString(options.headers, 'latitude');
+    if (requestLongitude != null && requestLatitude != null) {
+      await _storage.saveLocation(
+        longitude: requestLongitude,
+        latitude: requestLatitude,
+      );
+    }
+    final longitude = requestLongitude ?? await _storage.getLongitude();
+    final latitude = requestLatitude ?? await _storage.getLatitude();
+
+    options.headers.remove('Authorization');
+    options.headers
+      ..['authorization'] = token ?? ''
+      ..['deviceid'] = deviceId
+      ..['os'] = _osName
+      ..['appversion'] = packageInfo.version
+      ..['channelid'] = _channelId
+      ..['osversion'] = Platform.operatingSystemVersion
+      ..['longitude'] = longitude ?? ''
+      ..['latitude'] = latitude ?? ''
+      ..['userId'] = userId ?? '';
+  }
+
+  String? _headerString(Map<String, dynamic> headers, String key) {
+    final value = headers[key];
+    if (value == null) return null;
+    final stringValue = value.toString();
+    return stringValue.isEmpty ? null : stringValue;
+  }
+
+  String get _osName {
+    if (Platform.isIOS) return 'iOS';
+    if (Platform.isAndroid) return 'Android';
+    return Platform.operatingSystem;
+  }
+
+  String get _channelId {
+    if (Platform.isIOS) return 'ios_jp_tuantuan';
+    if (Platform.isAndroid) return 'android_jp_tuantuan';
+    return '${Platform.operatingSystem}_jp_tuantuan';
   }
 
   void _logRequest(RequestOptions options) {
@@ -129,7 +178,7 @@ class ApiClient {
   Map<String, dynamic> _safeHeaders(Map<String, dynamic> headers) {
     return headers.map((key, value) {
       final lowerKey = key.toLowerCase();
-      if (lowerKey == 'authorization') return MapEntry(key, 'Bearer ***');
+      if (lowerKey == 'authorization') return MapEntry(key, '***');
       return MapEntry(key, value);
     });
   }

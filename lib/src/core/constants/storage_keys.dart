@@ -5,4 +5,7 @@ class StorageKeys {
   static const isGroupManager = 'isGroupManager';
   static const hasShowSplashAd = 'hasShowSplashAd';
   static const refreshMemberDetailList = 'refreshMemberDetailList';
+  static const deviceId = 'deviceId';
+  static const longitude = 'longitude';
+  static const latitude = 'latitude';
 }
