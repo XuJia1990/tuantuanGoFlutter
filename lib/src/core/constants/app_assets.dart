@@ -11,6 +11,8 @@ class AppAssets {
   static const tabShopManagerInactive = 'assets/static/tab-5-5.png';
   static const loading = 'assets/static/data.gif';
   static const empty = 'assets/static/image/empty.png';
+  static const hotLogo = 'assets/static/image/hot-logo.png';
+  static const couponBg = 'assets/static/yhj-bg-one_compressed.png';
   static const update = 'assets/static/update.png';
   static const logo = 'assets/static/logott.png';
 }

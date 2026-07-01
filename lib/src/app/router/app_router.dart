@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/login_page.dart';
 import '../../features/discounts/presentation/discounts_page.dart';
+import '../../features/home/presentation/coupon_detail_page.dart';
 import '../../features/home/presentation/home_page.dart';
 import '../../features/home/presentation/search_page.dart';
+import '../../features/home/presentation/shop_detail_page.dart';
 import '../../features/member/presentation/member_page.dart';
 import '../../features/profile/presentation/profile_page.dart';
 import '../../features/shop_manager/presentation/shop_manager_page.dart';
@@ -50,6 +52,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
       GoRoute(path: '/search', builder: (context, state) => const SearchPage()),
+      GoRoute(
+        path: '/shop/:shopId',
+        builder: (context, state) {
+          return ShopDetailPage(shopId: state.pathParameters['shopId'] ?? '');
+        },
+      ),
+      GoRoute(
+        path: '/coupon/:couponId',
+        builder: (context, state) {
+          return CouponDetailPage(
+            couponId: state.pathParameters['couponId'] ?? '',
+            title: state.uri.queryParameters['title'] ?? '',
+          );
+        },
+      ),
       GoRoute(
         path: '/ad',
         builder: (context, state) {

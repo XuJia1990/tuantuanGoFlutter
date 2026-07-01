@@ -16,45 +16,38 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
-  final _scrollController = ScrollController();
+  final _pageController = PageController();
 
   List<Station> _stations = const [];
   List<HomeCategory> _categories = const [];
   List<HomeCategory> _sorts = const [];
-  List<ShopSummary> _shops = const [];
+  final Map<String, _ShopListState> _shopStates = {};
 
   var _currentStation = 0;
-  var _pageNo = 1;
-  var _total = 0;
-  var _isInitialLoading = true;
-  var _isLoadingMore = false;
-  String? _error;
+  var _isBootstrapping = true;
+  String? _bootstrapError;
   String _sortCondition = '';
   String _typeCondition = '';
   String _sortTitle = '综合排序';
   String _typeTitle = '全部美食';
 
-  bool get _hasMore => _shops.length < _total;
-
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_handleScroll);
     _bootstrap();
   }
 
   @override
   void dispose() {
-    _scrollController
-      ..removeListener(_handleScroll)
-      ..dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
   Future<void> _bootstrap() async {
     setState(() {
-      _isInitialLoading = true;
-      _error = null;
+      _isBootstrapping = true;
+      _bootstrapError = null;
+      _shopStates.clear();
     });
 
     try {
@@ -81,22 +74,17 @@ class _HomePageState extends ConsumerState<HomePage> {
         _sortTitle = firstSort?.categoryName ?? '综合排序';
         _typeCondition = '';
         _typeTitle = '全部美食';
+        _isBootstrapping = false;
       });
 
       if (stations.isNotEmpty) {
-        await _reloadShops();
-      } else if (mounted) {
-        setState(() {
-          _shops = const [];
-          _total = 0;
-          _isInitialLoading = false;
-        });
+        await _reloadShops(stationIndex: 0);
       }
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error.toString();
-        _isInitialLoading = false;
+        _bootstrapError = error.toString();
+        _isBootstrapping = false;
       });
     }
   }
@@ -123,69 +111,125 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
-  Future<void> _reloadShops() async {
-    if (_stations.isEmpty) return;
-    setState(() {
-      _pageNo = 1;
-      _shops = const [];
-      _total = 0;
-      _isInitialLoading = true;
-      _error = null;
-    });
-    await _loadShops(pageNo: 1, replace: true);
+  Future<void> _reloadCurrentShops() {
+    return _reloadShops(stationIndex: _currentStation);
   }
 
-  Future<void> _loadShops({required int pageNo, required bool replace}) async {
+  Future<void> _reloadShops({required int stationIndex}) async {
+    if (stationIndex < 0 || stationIndex >= _stations.length) return;
+    final stationId = _stations[stationIndex].stationId;
+    setState(() {
+      _shopStates[stationId] = _stateFor(stationId).copyWith(
+        shops: const [],
+        pageNo: 1,
+        total: 0,
+        isInitialLoading: true,
+        isLoadingMore: false,
+        error: null,
+      );
+    });
+    await _loadShops(stationIndex: stationIndex, pageNo: 1, replace: true);
+  }
+
+  Future<void> _loadShops({
+    required int stationIndex,
+    required int pageNo,
+    required bool replace,
+  }) async {
+    if (stationIndex < 0 || stationIndex >= _stations.length) return;
+    final stationId = _stations[stationIndex].stationId;
     try {
       final result = await ref
           .read(homeRepositoryProvider)
           .getShopList(
             pageNo: pageNo,
-            stationId: _stations[_currentStation].stationId,
+            stationId: stationId,
             sortCondition: _sortCondition,
             typeCondition: _typeCondition,
           );
       if (!mounted) return;
       setState(() {
-        _pageNo = pageNo;
-        _shops = replace ? result.list : [..._shops, ...result.list];
-        _total = result.total;
-        _isInitialLoading = false;
-        _isLoadingMore = false;
+        final previous = _stateFor(stationId);
+        _shopStates[stationId] = previous.copyWith(
+          pageNo: pageNo,
+          shops: replace ? result.list : [...previous.shops, ...result.list],
+          total: result.total,
+          isInitialLoading: false,
+          isLoadingMore: false,
+          error: null,
+        );
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error.toString();
-        _isInitialLoading = false;
-        _isLoadingMore = false;
+        _shopStates[stationId] = _stateFor(stationId).copyWith(
+          error: error.toString(),
+          isInitialLoading: false,
+          isLoadingMore: false,
+        );
       });
     }
   }
 
-  void _handleScroll() {
-    if (!_scrollController.hasClients || _isLoadingMore || !_hasMore) return;
-    final position = _scrollController.position;
-    if (position.pixels >= position.maxScrollExtent - 120) {
-      setState(() => _isLoadingMore = true);
-      _loadShops(pageNo: _pageNo + 1, replace: false);
+  void _ensureStationLoaded(int stationIndex) {
+    if (stationIndex < 0 || stationIndex >= _stations.length) return;
+    final stationId = _stations[stationIndex].stationId;
+    if (!_shopStates.containsKey(stationId)) {
+      _reloadShops(stationIndex: stationIndex);
+      return;
     }
+    final state = _stateFor(stationId);
+    if (state.isInitialLoading ||
+        state.isLoadingMore ||
+        state.shops.isNotEmpty) {
+      return;
+    }
+    _reloadShops(stationIndex: stationIndex);
+  }
+
+  void _loadMoreForStation(int stationIndex) {
+    if (stationIndex < 0 || stationIndex >= _stations.length) return;
+    final stationId = _stations[stationIndex].stationId;
+    final state = _stateFor(stationId);
+    if (state.isInitialLoading || state.isLoadingMore || !state.hasMore) return;
+    setState(() {
+      _shopStates[stationId] = state.copyWith(isLoadingMore: true);
+    });
+    _loadShops(
+      stationIndex: stationIndex,
+      pageNo: state.pageNo + 1,
+      replace: false,
+    );
   }
 
   Future<void> _selectStation(int index) async {
     if (index == _currentStation) return;
     setState(() => _currentStation = index);
-    await _reloadShops();
+    if (_pageController.hasClients) {
+      await _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    _ensureStationLoaded(index);
   }
 
-  Future<void> _handleHorizontalDrag(DragEndDetails details) async {
-    final velocity = details.primaryVelocity ?? 0;
-    if (velocity.abs() < 450 || _stations.isEmpty) return;
-    if (velocity < 0 && _currentStation < _stations.length - 1) {
-      await _selectStation(_currentStation + 1);
-    } else if (velocity > 0 && _currentStation > 0) {
-      await _selectStation(_currentStation - 1);
+  void _handleStationPageChanged(int index) {
+    if (_currentStation != index) {
+      setState(() => _currentStation = index);
     }
+    _ensureStationLoaded(index);
+  }
+
+  void _reloadCurrentFilterResult() {
+    setState(_shopStates.clear);
+    _reloadCurrentShops();
+  }
+
+  _ShopListState _stateFor(String stationId) {
+    return _shopStates[stationId] ??
+        const _ShopListState(isInitialLoading: true);
   }
 
   Future<void> _showOptionSheet({
@@ -249,12 +293,6 @@ class _HomePageState extends ConsumerState<HomePage> {
     if (selected != null) onSelected(selected);
   }
 
-  void _showShopDetailPending() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('店铺详情页待迁移')));
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -282,7 +320,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                         _sortCondition = item.categoryId;
                         _sortTitle = item.categoryName;
                       });
-                      _reloadShops();
+                      _reloadCurrentFilterResult();
                     },
                   ),
                   onTypeTap: () => _showOptionSheet(
@@ -296,14 +334,14 @@ class _HomePageState extends ConsumerState<HomePage> {
                             : item.categoryId;
                         _typeTitle = item.categoryName;
                       });
-                      _reloadShops();
+                      _reloadCurrentFilterResult();
                     },
                   ),
                 ),
                 Expanded(child: _buildBody()),
               ],
             ),
-            if (_isInitialLoading) const _LoadingOverlay(),
+            if (_isBootstrapping) const _LoadingOverlay(),
           ],
         ),
       ),
@@ -311,35 +349,135 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildBody() {
-    if (_error != null && _shops.isEmpty && !_isInitialLoading) {
-      return _ErrorView(message: _error!, onRetry: _bootstrap);
+    if (_bootstrapError != null && _stations.isEmpty && !_isBootstrapping) {
+      return _ErrorView(message: _bootstrapError!, onRetry: _bootstrap);
     }
-    if (_shops.isEmpty && !_isInitialLoading) {
-      return RefreshIndicator(
-        onRefresh: _reloadShops,
-        child: const EmptyState(),
+    if (_stations.isEmpty) {
+      return RefreshIndicator(onRefresh: _bootstrap, child: const EmptyState());
+    }
+
+    return PageView.builder(
+      controller: _pageController,
+      itemCount: _stations.length,
+      onPageChanged: _handleStationPageChanged,
+      itemBuilder: (context, index) {
+        final stationId = _stations[index].stationId;
+        return _StationShopPage(
+          state: _stateFor(stationId),
+          onRefresh: () => _reloadShops(stationIndex: index),
+          onLoadMore: () => _loadMoreForStation(index),
+          onRetry: () => _reloadShops(stationIndex: index),
+          onShopTap: (shop) => context.push('/shop/${shop.shopId}'),
+        );
+      },
+    );
+  }
+}
+
+class _ShopListState {
+  const _ShopListState({
+    this.shops = const [],
+    this.pageNo = 1,
+    this.total = 0,
+    this.isInitialLoading = false,
+    this.isLoadingMore = false,
+    this.error,
+  });
+
+  final List<ShopSummary> shops;
+  final int pageNo;
+  final int total;
+  final bool isInitialLoading;
+  final bool isLoadingMore;
+  final String? error;
+
+  bool get hasMore => shops.length < total;
+
+  _ShopListState copyWith({
+    List<ShopSummary>? shops,
+    int? pageNo,
+    int? total,
+    bool? isInitialLoading,
+    bool? isLoadingMore,
+    Object? error = _copySentinel,
+  }) {
+    return _ShopListState(
+      shops: shops ?? this.shops,
+      pageNo: pageNo ?? this.pageNo,
+      total: total ?? this.total,
+      isInitialLoading: isInitialLoading ?? this.isInitialLoading,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      error: error == _copySentinel ? this.error : error as String?,
+    );
+  }
+}
+
+const _copySentinel = Object();
+
+class _StationShopPage extends StatelessWidget {
+  const _StationShopPage({
+    required this.state,
+    required this.onRefresh,
+    required this.onLoadMore,
+    required this.onRetry,
+    required this.onShopTap,
+  });
+
+  final _ShopListState state;
+  final RefreshCallback onRefresh;
+  final VoidCallback onLoadMore;
+  final VoidCallback onRetry;
+  final ValueChanged<ShopSummary> onShopTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (state.error != null && state.shops.isEmpty && !state.isInitialLoading) {
+      return _ErrorView(message: state.error!, onRetry: onRetry);
+    }
+
+    if (state.isInitialLoading && state.shops.isEmpty) {
+      return const Center(
+        child: SizedBox(
+          width: 70,
+          height: 65,
+          child: Padding(
+            padding: EdgeInsets.all(8),
+            child: Image(image: AssetImage('assets/static/data.gif')),
+          ),
+        ),
       );
     }
 
-    return GestureDetector(
-      onHorizontalDragEnd: _handleHorizontalDrag,
-      child: RefreshIndicator(
-        onRefresh: _reloadShops,
+    if (state.shops.isEmpty) {
+      return RefreshIndicator(onRefresh: onRefresh, child: const EmptyState());
+    }
+
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification.metrics.pixels >=
+              notification.metrics.maxScrollExtent - 120) {
+            onLoadMore();
+          }
+          return false;
+        },
         child: ListView.separated(
-          controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
-          itemCount: _shops.length + 1,
-          separatorBuilder: (_, index) => index >= _shops.length - 1
+          itemCount: state.shops.length + 1,
+          separatorBuilder: (_, index) => index >= state.shops.length - 1
               ? const SizedBox.shrink()
               : const SizedBox(height: 12),
           itemBuilder: (context, index) {
-            if (index == _shops.length) {
+            if (index == state.shops.length) {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 child: Center(
                   child: Text(
-                    _hasMore ? (_isLoadingMore ? '努力加载中' : '轻轻上拉') : '已经到底部啦～',
+                    state.hasMore
+                        ? (state.isLoadingMore ? '努力加载中' : '轻轻上拉')
+                        : '已经到底部啦～',
                     style: const TextStyle(
                       fontSize: 13,
                       color: Color(0xFF9E9E9E),
@@ -348,10 +486,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                 ),
               );
             }
-            return ShopSummaryCard(
-              shop: _shops[index],
-              onTap: _showShopDetailPending,
-            );
+            final shop = state.shops[index];
+            return ShopSummaryCard(shop: shop, onTap: () => onShopTap(shop));
           },
         ),
       ),

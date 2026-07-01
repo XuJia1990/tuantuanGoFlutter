@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../data/home_models.dart';
@@ -92,48 +93,18 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     }
   }
 
-  void _showShopDetailPending() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('店铺详情页待迁移')));
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('搜索')),
       body: Stack(
         children: [
           Column(
             children: [
-              Container(
-                height: 50,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                color: Colors.white,
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: Navigator.of(context).pop,
-                      icon: const Icon(Icons.arrow_back),
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        textInputAction: TextInputAction.search,
-                        onSubmitted: (_) => _search(),
-                        decoration: InputDecoration(
-                          hintText: '请输入商户名、地点或菜名',
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                          ),
-                          fillColor: AppTheme.pageBg,
-                          prefixIcon: const Icon(Icons.search, size: 20),
-                        ),
-                      ),
-                    ),
-                    TextButton(onPressed: _search, child: const Text('搜索')),
-                  ],
-                ),
+              const _SearchTitleBar(),
+              _SearchActionBar(
+                controller: _controller,
+                onBack: Navigator.of(context).pop,
+                onSearch: _search,
               ),
               Expanded(child: _buildResults()),
             ],
@@ -177,9 +148,121 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           }
           return ShopSummaryCard(
             shop: _shops[index],
-            onTap: _showShopDetailPending,
+            onTap: () => context.push('/shop/${_shops[index].shopId}'),
           );
         },
+      ),
+    );
+  }
+}
+
+class _SearchTitleBar extends StatelessWidget {
+  const _SearchTitleBar();
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Colors.white,
+      child: SafeArea(
+        bottom: false,
+        child: SizedBox(
+          height: 44,
+          child: const Center(
+            child: Text(
+              '搜索',
+              style: TextStyle(
+                fontSize: 16,
+                color: AppTheme.textPrimary,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchActionBar extends StatelessWidget {
+  const _SearchActionBar({
+    required this.controller,
+    required this.onBack,
+    required this.onSearch,
+  });
+
+  final TextEditingController controller;
+  final VoidCallback onBack;
+  final VoidCallback onSearch;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 50,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      color: Colors.white,
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_back, size: 20),
+            color: AppTheme.textPrimary,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 24, height: 50),
+            splashRadius: 20,
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: SizedBox(
+                height: 40,
+                child: TextField(
+                  controller: controller,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => onSearch(),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppTheme.textPrimary,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: '请输入商户名、地点或菜名',
+                    hintStyle: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF999999),
+                    ),
+                    filled: true,
+                    fillColor: AppTheme.pageBg,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 35,
+            height: 50,
+            child: TextButton(
+              onPressed: onSearch,
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                foregroundColor: AppTheme.brand,
+                textStyle: const TextStyle(fontSize: 15),
+              ),
+              child: const Text('搜索'),
+            ),
+          ),
+        ],
       ),
     );
   }
