@@ -10,6 +10,7 @@ import '../../features/home/presentation/search_page.dart';
 import '../../features/home/presentation/shop_detail_page.dart';
 import '../../features/member/presentation/member_page.dart';
 import '../../features/profile/presentation/profile_page.dart';
+import '../../features/profile/presentation/profile_sub_pages.dart';
 import '../../features/shop_manager/presentation/shop_manager_page.dart';
 import '../../features/shell/presentation/app_shell.dart';
 import '../../features/splash/presentation/ad_webview_page.dart';
@@ -50,8 +51,67 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
-      GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
+      GoRoute(
+        path: '/login',
+        builder: (context, state) {
+          return LoginPage(messageType: state.uri.queryParameters['type']);
+        },
+      ),
+      GoRoute(
+        path: '/register',
+        builder: (context, state) => const RegisterPage(),
+      ),
+      GoRoute(
+        path: '/forget-password',
+        builder: (context, state) {
+          return ForgetPasswordPage(
+            type: state.uri.queryParameters['type'] ?? 'resetPassword',
+          );
+        },
+      ),
+      GoRoute(
+        path: '/set-password',
+        builder: (context, state) {
+          return SetPasswordPage(
+            type: state.uri.queryParameters['type'] ?? 'register',
+            mobile: state.uri.queryParameters['mobile'] ?? '',
+            code: state.uri.queryParameters['code'] ?? '',
+          );
+        },
+      ),
       GoRoute(path: '/search', builder: (context, state) => const SearchPage()),
+      GoRoute(
+        path: '/edit-profile',
+        builder: (context, state) => const EditProfilePage(),
+      ),
+      GoRoute(
+        path: '/purchased-coupons',
+        builder: (context, state) => const PurchasedCouponsPage(),
+      ),
+      GoRoute(
+        path: '/my-collection',
+        builder: (context, state) => const MyCollectionPage(),
+      ),
+      GoRoute(
+        path: '/settings',
+        builder: (context, state) => const SettingsPage(),
+      ),
+      GoRoute(
+        path: '/about-us',
+        builder: (context, state) => const AboutUsPage(),
+      ),
+      GoRoute(
+        path: '/service',
+        builder: (context, state) => const ServicePage(),
+      ),
+      GoRoute(
+        path: '/privacy-agreement',
+        builder: (context, state) {
+          return PrivacyAgreementPage(
+            type: int.tryParse(state.uri.queryParameters['type'] ?? '4') ?? 4,
+          );
+        },
+      ),
       GoRoute(
         path: '/shop/:shopId',
         builder: (context, state) {

@@ -15,43 +15,56 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  bool _isGroupManager = false;
-
   @override
-  void initState() {
-    super.initState();
-    _loadRole();
-  }
-
-  Future<void> _loadRole() async {
-    final isGroupManager = await ref.read(appStorageProvider).isGroupManager();
-    if (mounted) setState(() => _isGroupManager = isGroupManager);
+  void didUpdateWidget(covariant AppShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentPath == widget.currentPath) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.invalidate(isGroupManagerProvider);
+      if (widget.currentPath == '/profile') {
+        ref.read(authRevisionProvider.notifier).bump();
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final isGroupManager = ref
+        .watch(isGroupManagerProvider)
+        .maybeWhen(data: (value) => value, orElse: () => false);
     final tabs = <_ShellTab>[
-      const _ShellTab('首页', '/', Icons.home_outlined, Icons.home),
+      const _ShellTab(
+        '首页',
+        '/',
+        'assets/static/tab-1-1.png',
+        'assets/static/tab-1.png',
+      ),
       const _ShellTab(
         '团优惠',
         '/discounts',
-        Icons.local_offer_outlined,
-        Icons.local_offer,
+        'assets/static/tab-2-2.png',
+        'assets/static/tab-2.png',
       ),
       const _ShellTab(
         '会员',
         '/member',
-        Icons.card_membership_outlined,
-        Icons.card_membership,
+        'assets/static/tab-4-4.png',
+        'assets/static/tab-4.png',
       ),
-      if (_isGroupManager)
+      if (isGroupManager)
         const _ShellTab(
           '店铺管理',
           '/shop-manager',
-          Icons.storefront_outlined,
-          Icons.storefront,
+          'assets/static/tab-5-5.png',
+          'assets/static/tab-5.png',
         ),
-      const _ShellTab('我的', '/profile', Icons.person_outline, Icons.person),
+      const _ShellTab(
+        '我的',
+        '/profile',
+        'assets/static/tab-3-3.png',
+        'assets/static/tab-3.png',
+      ),
     ];
     final index = tabs.indexWhere((tab) => tab.path == widget.currentPath);
 
@@ -59,12 +72,24 @@ class _AppShellState extends ConsumerState<AppShell> {
       body: widget.child,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: index < 0 ? 0 : index,
-        onTap: (value) => context.go(tabs[value].path),
+        onTap: (value) async {
+          final tab = tabs[value];
+          if ((tab.path == '/discounts' || tab.path == '/member') &&
+              !await ref.read(appStorageProvider).isSignedIn()) {
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('未登录，请先登录')));
+            context.push('/login');
+            return;
+          }
+          if (context.mounted) context.go(tab.path);
+        },
         items: [
           for (final tab in tabs)
             BottomNavigationBarItem(
-              icon: Icon(tab.icon),
-              activeIcon: Icon(tab.activeIcon),
+              icon: _TabIcon(asset: tab.iconPath),
+              activeIcon: _TabIcon(asset: tab.activeIconPath),
               label: tab.label,
             ),
         ],
@@ -73,11 +98,25 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 }
 
+class _TabIcon extends StatelessWidget {
+  const _TabIcon({required this.asset});
+
+  final String asset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Image.asset(asset, width: 22, height: 22, fit: BoxFit.contain),
+    );
+  }
+}
+
 class _ShellTab {
-  const _ShellTab(this.label, this.path, this.icon, this.activeIcon);
+  const _ShellTab(this.label, this.path, this.iconPath, this.activeIconPath);
 
   final String label;
   final String path;
-  final IconData icon;
-  final IconData activeIcon;
+  final String iconPath;
+  final String activeIconPath;
 }

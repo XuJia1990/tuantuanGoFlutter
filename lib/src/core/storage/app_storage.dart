@@ -7,6 +7,22 @@ import '../constants/storage_keys.dart';
 
 final appStorageProvider = Provider<AppStorage>((ref) => AppStorage());
 
+class AuthRevision extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void bump() => state++;
+}
+
+final authRevisionProvider = NotifierProvider<AuthRevision, int>(
+  AuthRevision.new,
+);
+
+final isGroupManagerProvider = FutureProvider<bool>((ref) async {
+  ref.watch(authRevisionProvider);
+  return ref.watch(appStorageProvider).isGroupManager();
+});
+
 class AppStorage {
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
 
@@ -24,10 +40,34 @@ class AppStorage {
     return match?.group(1);
   }
 
+  Future<void> saveUser(String value) async {
+    await (await _prefs).setString(StorageKeys.user, value);
+  }
+
+  Future<String?> getUserDetail() async {
+    return (await _prefs).getString(StorageKeys.userDetail);
+  }
+
+  Future<void> saveUserDetail(String value) async {
+    await (await _prefs).setString(StorageKeys.userDetail, value);
+  }
+
+  Future<String?> getUserAvatar() async {
+    return (await _prefs).getString(StorageKeys.userAvatar);
+  }
+
+  Future<void> saveUserAvatar(String value) async {
+    await (await _prefs).setString(StorageKeys.userAvatar, value);
+  }
+
   Future<bool> isSignedIn() async => (await getAccessToken()) != null;
 
   Future<bool> isGroupManager() async {
     return (await _prefs).getBool(StorageKeys.isGroupManager) ?? false;
+  }
+
+  Future<void> saveIsGroupManager(bool value) async {
+    await (await _prefs).setBool(StorageKeys.isGroupManager, value);
   }
 
   Future<String> getDeviceId() async {

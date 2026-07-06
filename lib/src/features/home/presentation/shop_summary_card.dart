@@ -190,12 +190,30 @@ class _RatingStars extends StatelessWidget {
     return Row(
       children: [
         for (var index = 1; index <= 5; index++)
-          Icon(
-            index <= value.round() ? Icons.star : Icons.star_border,
-            size: 14,
-            color: AppTheme.brand,
+          Padding(
+            padding: EdgeInsets.only(right: index == 5 ? 0 : 2.5),
+            child: _RatingStar(active: index <= value.round()),
           ),
       ],
+    );
+  }
+}
+
+class _RatingStar extends StatelessWidget {
+  const _RatingStar({required this.active});
+
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 16,
+      height: 16,
+      decoration: BoxDecoration(
+        color: active ? AppTheme.brand : const Color(0xFFE5E5E5),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: const Icon(Icons.star, size: 12, color: Colors.white),
     );
   }
 }
