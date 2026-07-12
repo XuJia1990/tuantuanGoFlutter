@@ -119,7 +119,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 text: '会员码',
                 onTap: () {
                   Navigator.of(context).pop();
-                  _toast('会员码待迁移');
+                  context.push('/member-code');
                 },
               ),
               const Divider(height: 1, color: Color(0xFFF1F1F1)),
@@ -127,7 +127,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 text: '付款码',
                 onTap: () {
                   Navigator.of(context).pop();
-                  _toast('付款码待迁移');
+                  context.push('/pay-code');
                 },
               ),
             ],
@@ -139,7 +139,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
   void _scan() {
     if (!_requireLogin()) return;
-    _toast('扫一扫待迁移');
+    context.push('/scan-code');
   }
 
   @override
@@ -214,6 +214,7 @@ class ProfileUser {
   const ProfileUser({
     required this.raw,
     required this.userId,
+    required this.mobile,
     required this.nickname,
     required this.showId,
     required this.avatar,
@@ -224,6 +225,7 @@ class ProfileUser {
 
   final Map<String, dynamic> raw;
   final String userId;
+  final String mobile;
   final String nickname;
   final String showId;
   final String avatar;
@@ -246,6 +248,7 @@ class ProfileUser {
     return ProfileUser(
       raw: json,
       userId: json['userId']?.toString() ?? '',
+      mobile: json['mobile']?.toString() ?? '',
       nickname: json['nickname']?.toString() ?? '--',
       showId: json['showId']?.toString() ?? '--',
       avatar: json['avatar']?.toString() ?? '',

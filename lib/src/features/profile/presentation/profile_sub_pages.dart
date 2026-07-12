@@ -1,10 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/theme/app_theme.dart';
@@ -167,6 +171,569 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
             ],
           ),
           if (_loading) const _LoadingOverlay(),
+        ],
+      ),
+    );
+  }
+}
+
+class MemberCodePage extends ConsumerStatefulWidget {
+  const MemberCodePage({super.key});
+
+  @override
+  ConsumerState<MemberCodePage> createState() => _MemberCodePageState();
+}
+
+class _MemberCodePageState extends ConsumerState<MemberCodePage> {
+  ProfileUser? _user;
+  String _avatar = '';
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final storage = ref.read(appStorageProvider);
+    final raw = await storage.getUserDetail();
+    final avatar = await storage.getUserAvatar();
+    if (!mounted) return;
+    setState(() {
+      _user = ProfileUser.tryParse(raw);
+      _avatar = avatar ?? '';
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = _user;
+    final qrData = user == null
+        ? ''
+        : user.mobile.isNotEmpty
+        ? '${user.userId},${user.mobile}'
+        : user.userId;
+    return _ProfileScaffold(
+      title: '二维码',
+      child: _loading
+          ? const _CenteredLoading()
+          : user == null || qrData.isEmpty
+          ? const EmptyState()
+          : ColoredBox(
+              color: Colors.white,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(0, 150, 0, 40),
+                children: [
+                  Center(
+                    child: SizedBox(
+                      width: MediaQuery.sizeOf(context).width * 0.6,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _MemberAvatar(
+                            url: _avatar.isNotEmpty ? _avatar : user.avatar,
+                          ),
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  user.nickname,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 17,
+                                    color: AppTheme.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '用户账号:${user.mobile}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF999999),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Center(
+                    child: _GradientQrCode(
+                      data: qrData,
+                      size: 220,
+                      colors: const [AppTheme.brandEnd, AppTheme.brand],
+                      embeddedImage: const AssetImage(
+                        'assets/static/image/header.png',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 50),
+                  const Center(
+                    child: SizedBox(
+                      width: 260,
+                      child: Text(
+                        '扫一扫上面的二维码图案,创建会员',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.25,
+                          color: Color(0xFF999999),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+class PayCodePage extends ConsumerStatefulWidget {
+  const PayCodePage({super.key});
+
+  @override
+  ConsumerState<PayCodePage> createState() => _PayCodePageState();
+}
+
+class _PayCodePageState extends ConsumerState<PayCodePage> {
+  String _payCode = '';
+  int _countDown = 60;
+  Timer? _timer;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _createPayCode();
+    _setTimer();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _setTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _countDown--);
+      if (_countDown <= 0) {
+        _createPayCode();
+        setState(() => _countDown = 60);
+      }
+    });
+  }
+
+  Future<void> _createPayCode() async {
+    if (mounted) setState(() => _loading = true);
+    try {
+      final raw = await ref
+          .read(apiClientProvider)
+          .post(TuanTuanEndpoints.createPayCode);
+      final envelope = ApiEnvelope.parse<String>(raw, (data) {
+        if (data is Map) return data['payCode']?.toString() ?? '';
+        return data?.toString() ?? '';
+      });
+      if (!envelope.isSuccess ||
+          envelope.data == null ||
+          envelope.data!.isEmpty) {
+        _toast('生成支付二维码失败');
+        return;
+      }
+      if (mounted) setState(() => _payCode = envelope.data!);
+    } catch (error) {
+      _toast(error.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final rpx = width / 750;
+    return Scaffold(
+      backgroundColor: AppTheme.brand,
+      body: Container(
+        decoration: const BoxDecoration(gradient: AppTheme.brandGradient),
+        child: SafeArea(
+          bottom: false,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 40 * rpx),
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        height: kToolbarHeight,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            const Text(
+                              '付款码',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 52 * rpx),
+                      Container(
+                        width: 670 * rpx,
+                        height: 774 * rpx,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(32 * rpx),
+                          image: const DecorationImage(
+                            image: AssetImage('assets/static/card_bg_two.png'),
+                            fit: BoxFit.fill,
+                          ),
+                        ),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 40 * rpx),
+                          child: Column(
+                            children: [
+                              SizedBox(
+                                height: 120 * rpx,
+                                child: Center(child: _PayCodeTitle(scale: rpx)),
+                              ),
+                              SizedBox(height: 70 * rpx),
+                              SizedBox(
+                                width: 220,
+                                height: 220,
+                                child: _loading && _payCode.isEmpty
+                                    ? const _CenteredLoading()
+                                    : _payCode.isEmpty
+                                    ? const Center(
+                                        child: Text(
+                                          '生成支付二维码失败',
+                                          style: TextStyle(
+                                            color: Color(0xFF999999),
+                                          ),
+                                        ),
+                                      )
+                                    : QrImageView(
+                                        data: _payCode,
+                                        size: 220,
+                                        version: QrVersions.auto,
+                                        padding: EdgeInsets.zero,
+                                        eyeStyle: const QrEyeStyle(
+                                          eyeShape: QrEyeShape.square,
+                                          color: Color(0xFF333333),
+                                        ),
+                                        dataModuleStyle:
+                                            const QrDataModuleStyle(
+                                              dataModuleShape:
+                                                  QrDataModuleShape.square,
+                                              color: Color(0xFF333333),
+                                            ),
+                                      ),
+                              ),
+                              SizedBox(height: 50 * rpx),
+                              Text.rich(
+                                TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: '$_countDown ',
+                                      style: const TextStyle(
+                                        color: AppTheme.brand,
+                                      ),
+                                    ),
+                                    const TextSpan(text: '秒后二维码自动刷新'),
+                                  ],
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: -8,
+                top: 0,
+                child: SizedBox(
+                  height: kToolbarHeight,
+                  child: Center(
+                    child: IconButton(
+                      onPressed: Navigator.of(context).pop,
+                      icon: const Icon(
+                        Icons.chevron_left,
+                        color: Colors.white,
+                        size: 34,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ScanCodePage extends ConsumerStatefulWidget {
+  const ScanCodePage({super.key});
+
+  @override
+  ConsumerState<ScanCodePage> createState() => _ScanCodePageState();
+}
+
+class _ScanCodePageState extends ConsumerState<ScanCodePage> {
+  late final MobileScannerController _controller;
+  bool _handling = false;
+  bool _hasPermission = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = MobileScannerController(
+      formats: const [BarcodeFormat.qrCode],
+      autoZoom: false,
+    );
+    _checkCameraPermission();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkCameraPermission() async {
+    var status = await Permission.camera.status;
+    if (!status.isGranted) {
+      status = await Permission.camera.request();
+    }
+    if (!mounted) return;
+    if (status.isGranted) {
+      setState(() => _hasPermission = true);
+      return;
+    }
+    await _showCameraPermissionDialog();
+  }
+
+  Future<void> _showCameraPermissionDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('需要相机权限'),
+        content: const Text('请在系统设置中开启相机权限'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              openAppSettings();
+            },
+            child: const Text('去设置'),
+          ),
+        ],
+      ),
+    );
+    if (mounted) context.pop();
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _onDetect(BarcodeCapture capture) async {
+    if (_handling) return;
+    final value = capture.barcodes
+        .map((barcode) => barcode.rawValue?.trim() ?? '')
+        .firstWhere((item) => item.isNotEmpty, orElse: () => '');
+    if (value.isEmpty) return;
+    setState(() => _handling = true);
+    await _controller.stop();
+    await _handleScanResult(value);
+  }
+
+  Future<void> _handleScanResult(String result) async {
+    final data = result.split(',');
+    if (data.length == 2) {
+      _toast('请扫商户码');
+      await _resume();
+      return;
+    }
+    final shopId = data.first.trim();
+    if (shopId.isEmpty) {
+      _toast('请扫商户码');
+      await _resume();
+      return;
+    }
+    try {
+      final raw = await ref
+          .read(apiClientProvider)
+          .post(
+            TuanTuanEndpoints.checkMember,
+            data: {'shopId': shopId, 'isShopScan': 0},
+          );
+      final envelope = ApiEnvelope.parse<bool>(raw, (data) {
+        if (data is Map) {
+          return data['isMember'] == true ||
+              data['isMember'] == 1 ||
+              data['isMember']?.toString() == 'true';
+        }
+        return false;
+      });
+      if (!envelope.isSuccess) {
+        _toast(envelope.message ?? '扫码失败');
+        await _resume();
+        return;
+      }
+      if (!mounted) return;
+      if (envelope.data == true) {
+        context.go('/member-consumption?shopId=${Uri.encodeComponent(shopId)}');
+      } else {
+        context.go(
+          '/create-member?shopId=${Uri.encodeComponent(shopId)}&from=user',
+        );
+      }
+    } catch (error) {
+      _toast(error.toString());
+      await _resume();
+    }
+  }
+
+  Future<void> _resume() async {
+    if (!mounted) return;
+    setState(() => _handling = false);
+    await _controller.start();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          if (_hasPermission)
+            MobileScanner(controller: _controller, onDetect: _onDetect)
+          else
+            const Center(child: CircularProgressIndicator(color: Colors.white)),
+          const _ScanOverlay(),
+          SafeArea(
+            child: SizedBox(
+              height: kToolbarHeight,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Text(
+                    '扫一扫',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    child: IconButton(
+                      onPressed: Navigator.of(context).pop,
+                      icon: const Icon(
+                        Icons.chevron_left,
+                        color: Colors.white,
+                        size: 34,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_handling)
+            const Positioned.fill(
+              child: ColoredBox(
+                color: Color(0x66000000),
+                child: Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class ScanTargetPlaceholderPage extends StatelessWidget {
+  const ScanTargetPlaceholderPage({
+    required this.title,
+    required this.sourcePage,
+    required this.params,
+    super.key,
+  });
+
+  final String title;
+  final String sourcePage;
+  final Map<String, String> params;
+
+  @override
+  Widget build(BuildContext context) {
+    return _ProfileScaffold(
+      title: title,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _ShadowPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '待迁移',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.brand,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(sourcePage),
+                if (params.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  for (final entry in params.entries)
+                    Text('${entry.key}: ${entry.value}'),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -909,7 +1476,11 @@ class _ProfileScaffold extends StatelessWidget {
         scrolledUnderElevation: 0,
         leading: IconButton(
           onPressed: Navigator.of(context).pop,
-          icon: const Icon(Icons.chevron_left, color: Color(0xFF333333)),
+          icon: const Icon(
+            Icons.chevron_left,
+            color: Color(0xFF333333),
+            size: 32,
+          ),
         ),
       ),
       body: child,
@@ -1561,6 +2132,191 @@ class _CircleNetImage extends StatelessWidget {
       ),
     );
   }
+}
+
+class _MemberAvatar extends StatelessWidget {
+  const _MemberAvatar({required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipOval(
+      child: SizedBox(
+        width: 35,
+        height: 35,
+        child: url.isEmpty
+            ? Image.asset('assets/static/tx.png', fit: BoxFit.cover)
+            : Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) =>
+                    Image.asset('assets/static/tx.png', fit: BoxFit.cover),
+              ),
+      ),
+    );
+  }
+}
+
+class _GradientQrCode extends StatelessWidget {
+  const _GradientQrCode({
+    required this.data,
+    required this.size,
+    required this.colors,
+    this.embeddedImage,
+  });
+
+  final String data;
+  final double size;
+  final List<Color> colors;
+  final ImageProvider? embeddedImage;
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      shaderCallback: (rect) {
+        return LinearGradient(
+          colors: colors,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ).createShader(rect);
+      },
+      blendMode: BlendMode.srcIn,
+      child: QrImageView(
+        data: data,
+        size: size,
+        version: QrVersions.auto,
+        padding: EdgeInsets.zero,
+        eyeStyle: const QrEyeStyle(
+          eyeShape: QrEyeShape.square,
+          color: Colors.white,
+        ),
+        dataModuleStyle: const QrDataModuleStyle(
+          dataModuleShape: QrDataModuleShape.square,
+          color: Colors.white,
+        ),
+        embeddedImage: embeddedImage,
+        embeddedImageStyle: embeddedImage == null
+            ? null
+            : const QrEmbeddedImageStyle(size: Size(38, 38)),
+      ),
+    );
+  }
+}
+
+class _PayCodeTitle extends StatelessWidget {
+  const _PayCodeTitle({required this.scale});
+
+  final double scale;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _PayCodeTick(height: 10 * scale, scale: scale),
+        SizedBox(width: 6 * scale),
+        _PayCodeTick(height: 18 * scale, scale: scale),
+        SizedBox(width: 16 * scale),
+        Text(
+          '扫一扫，向商家付款',
+          style: TextStyle(fontSize: 32 * scale, color: AppTheme.textPrimary),
+        ),
+        SizedBox(width: 16 * scale),
+        _PayCodeTick(height: 18 * scale, scale: scale),
+        SizedBox(width: 6 * scale),
+        _PayCodeTick(height: 10 * scale, scale: scale),
+      ],
+    );
+  }
+}
+
+class _PayCodeTick extends StatelessWidget {
+  const _PayCodeTick({required this.height, required this.scale});
+
+  final double height;
+  final double scale;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 6 * scale,
+      height: height,
+      decoration: BoxDecoration(
+        gradient: AppTheme.brandGradient,
+        borderRadius: BorderRadius.circular(3 * scale),
+      ),
+    );
+  }
+}
+
+class _ScanOverlay extends StatelessWidget {
+  const _ScanOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final scanSize = size.width * 0.68;
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned.fill(child: Container(color: const Color(0x66000000))),
+          Center(
+            child: Container(
+              width: scanSize,
+              height: scanSize,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white, width: 1),
+              ),
+              child: CustomPaint(painter: _ScanCornerPainter()),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            top: size.height / 2 + scanSize / 2 + 24,
+            child: const Text(
+              '请将二维码放入框内',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white, fontSize: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScanCornerPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppTheme.brand
+      ..strokeWidth = 4
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.square;
+    const length = 26.0;
+    canvas
+      ..drawLine(Offset.zero, const Offset(length, 0), paint)
+      ..drawLine(Offset.zero, const Offset(0, length), paint)
+      ..drawLine(Offset(size.width, 0), Offset(size.width - length, 0), paint)
+      ..drawLine(Offset(size.width, 0), Offset(size.width, length), paint)
+      ..drawLine(Offset(0, size.height), Offset(length, size.height), paint)
+      ..drawLine(Offset(0, size.height), Offset(0, size.height - length), paint)
+      ..drawLine(
+        Offset(size.width, size.height),
+        Offset(size.width - length, size.height),
+        paint,
+      )
+      ..drawLine(
+        Offset(size.width, size.height),
+        Offset(size.width, size.height - length),
+        paint,
+      );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _DiscountNumber extends StatelessWidget {

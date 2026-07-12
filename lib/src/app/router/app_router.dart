@@ -9,6 +9,8 @@ import '../../features/home/presentation/home_page.dart';
 import '../../features/home/presentation/search_page.dart';
 import '../../features/home/presentation/shop_detail_page.dart';
 import '../../features/member/presentation/member_page.dart';
+import '../../features/member/presentation/member_recharge_page.dart';
+import '../../features/member/presentation/member_record_page.dart';
 import '../../features/profile/presentation/profile_page.dart';
 import '../../features/profile/presentation/profile_sub_pages.dart';
 import '../../features/shop_manager/presentation/shop_manager_page.dart';
@@ -103,6 +105,50 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/service',
         builder: (context, state) => const ServicePage(),
+      ),
+      GoRoute(
+        path: '/member-code',
+        builder: (context, state) => const MemberCodePage(),
+      ),
+      GoRoute(
+        path: '/pay-code',
+        builder: (context, state) => const PayCodePage(),
+      ),
+      GoRoute(
+        path: '/scan-code',
+        builder: (context, state) => const ScanCodePage(),
+      ),
+      GoRoute(
+        path: '/create-member',
+        builder: (context, state) {
+          return ScanTargetPlaceholderPage(
+            title: '创建会员',
+            sourcePage: 'pages/member/createMember.vue',
+            params: state.uri.queryParameters,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/member-consumption',
+        builder: (context, state) {
+          return ScanTargetPlaceholderPage(
+            title: '会员消费',
+            sourcePage: 'pages/member/memberConsumption.vue',
+            params: state.uri.queryParameters,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/member-recharge',
+        builder: (context, state) {
+          return MemberRechargePage(params: state.uri.queryParameters);
+        },
+      ),
+      GoRoute(
+        path: '/member-record',
+        builder: (context, state) {
+          return MemberRecordPage(params: state.uri.queryParameters);
+        },
       ),
       GoRoute(
         path: '/privacy-agreement',

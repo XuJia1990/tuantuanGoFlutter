@@ -204,11 +204,11 @@ class _SearchActionBar extends StatelessWidget {
         children: [
           IconButton(
             onPressed: onBack,
-            icon: const Icon(Icons.arrow_back, size: 20),
+            icon: const Icon(Icons.arrow_back, size: 28),
             color: AppTheme.textPrimary,
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 24, height: 50),
-            splashRadius: 20,
+            constraints: const BoxConstraints.tightFor(width: 36, height: 50),
+            splashRadius: 24,
           ),
           Expanded(
             child: Padding(

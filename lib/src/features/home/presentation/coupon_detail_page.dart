@@ -88,7 +88,11 @@ class _CouponDetailPageState extends ConsumerState<CouponDetailPage> {
         scrolledUnderElevation: 0,
         leading: IconButton(
           onPressed: Navigator.of(context).pop,
-          icon: const Icon(Icons.chevron_left, color: Color(0xFF333333)),
+          icon: const Icon(
+            Icons.chevron_left,
+            color: Color(0xFF333333),
+            size: 32,
+          ),
         ),
         title: Text(
           title,
