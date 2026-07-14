@@ -116,7 +116,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/scan-code',
-        builder: (context, state) => const ScanCodePage(),
+        builder: (context, state) {
+          return ScanCodePage(params: state.uri.queryParameters);
+        },
+      ),
+      GoRoute(
+        path: '/shop-manage-detail',
+        builder: (context, state) {
+          return ShopManageDetailPage(params: state.uri.queryParameters);
+        },
       ),
       GoRoute(
         path: '/create-member',
@@ -134,6 +142,36 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return ScanTargetPlaceholderPage(
             title: '会员消费',
             sourcePage: 'pages/member/memberConsumption.vue',
+            params: state.uri.queryParameters,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/member-shop-pay',
+        builder: (context, state) {
+          return ScanTargetPlaceholderPage(
+            title: '会员消费',
+            sourcePage: 'pages/member/memberConsumptionShopPay.vue',
+            params: state.uri.queryParameters,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/member-detail-list',
+        builder: (context, state) {
+          return MemberTargetPlaceholderPage(
+            title: '会员详情',
+            sourcePage: 'pages/member/memberDetailList.vue',
+            params: state.uri.queryParameters,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/member-static',
+        builder: (context, state) {
+          return MemberTargetPlaceholderPage(
+            title: '会员消费账单',
+            sourcePage: 'pages/member/memberStatic.vue',
             params: state.uri.queryParameters,
           );
         },

@@ -103,8 +103,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
   void _showCodeSheet() {
     if (!_requireLogin()) return;
+    final pageContext = context;
     showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
@@ -119,7 +121,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 text: '会员码',
                 onTap: () {
                   Navigator.of(context).pop();
-                  context.push('/member-code');
+                  pageContext.push('/member-code');
                 },
               ),
               const Divider(height: 1, color: Color(0xFFF1F1F1)),
@@ -127,7 +129,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 text: '付款码',
                 onTap: () {
                   Navigator.of(context).pop();
-                  context.push('/pay-code');
+                  pageContext.push('/pay-code');
                 },
               ),
             ],

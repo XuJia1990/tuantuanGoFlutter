@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
+import '../../../core/qr/scan_code_parser.dart';
 import '../../../core/storage/app_storage.dart';
 import '../data/privacy_agreement_text.dart';
 import '../../home/data/home_models.dart';
@@ -504,16 +505,29 @@ class _PayCodePageState extends ConsumerState<PayCodePage> {
 }
 
 class ScanCodePage extends ConsumerStatefulWidget {
-  const ScanCodePage({super.key});
+  const ScanCodePage({this.params = const {}, super.key});
+
+  final Map<String, String> params;
 
   @override
   ConsumerState<ScanCodePage> createState() => _ScanCodePageState();
 }
 
-class _ScanCodePageState extends ConsumerState<ScanCodePage> {
+class _ScanCodePageState extends ConsumerState<ScanCodePage>
+    with WidgetsBindingObserver {
   late final MobileScannerController _controller;
   bool _handling = false;
   bool _hasPermission = false;
+  bool _checkingPermission = false;
+  bool _permissionDialogShowing = false;
+  bool _writeOffVisible = false;
+  bool _writeOffLoading = false;
+  bool _writeOffSuccess = false;
+  bool _writeOffFail = false;
+  String _writeOffMessage = '';
+  String _lastWriteOffUuid = '';
+
+  bool get _isShopScan => widget.params['mode'] == 'shop';
 
   @override
   void initState() {
@@ -522,29 +536,48 @@ class _ScanCodePageState extends ConsumerState<ScanCodePage> {
       formats: const [BarcodeFormat.qrCode],
       autoZoom: false,
     );
+    WidgetsBinding.instance.addObserver(this);
     _checkCameraPermission();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
   }
 
-  Future<void> _checkCameraPermission() async {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkCameraPermission(requestIfNeeded: false);
+    }
+  }
+
+  Future<void> _checkCameraPermission({bool requestIfNeeded = true}) async {
+    if (_checkingPermission) return;
+    _checkingPermission = true;
     var status = await Permission.camera.status;
-    if (!status.isGranted) {
+    if (requestIfNeeded &&
+        !status.isGranted &&
+        !status.isPermanentlyDenied &&
+        !status.isRestricted) {
       status = await Permission.camera.request();
     }
     if (!mounted) return;
     if (status.isGranted) {
       setState(() => _hasPermission = true);
+      _checkingPermission = false;
       return;
     }
-    await _showCameraPermissionDialog();
+    setState(() => _hasPermission = false);
+    _checkingPermission = false;
+    if (requestIfNeeded) await _showCameraPermissionDialog();
   }
 
   Future<void> _showCameraPermissionDialog() async {
+    if (_permissionDialogShowing || !mounted) return;
+    _permissionDialogShowing = true;
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
@@ -556,16 +589,16 @@ class _ScanCodePageState extends ConsumerState<ScanCodePage> {
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.of(context).pop();
-              openAppSettings();
+              await openAppSettings();
             },
             child: const Text('去设置'),
           ),
         ],
       ),
     );
-    if (mounted) context.pop();
+    _permissionDialogShowing = false;
   }
 
   void _toast(String message) {
@@ -586,6 +619,10 @@ class _ScanCodePageState extends ConsumerState<ScanCodePage> {
   }
 
   Future<void> _handleScanResult(String result) async {
+    if (_isShopScan) {
+      await _handleShopScanResult(result);
+      return;
+    }
     final data = result.split(',');
     if (data.length == 2) {
       _toast('请扫商户码');
@@ -632,6 +669,143 @@ class _ScanCodePageState extends ConsumerState<ScanCodePage> {
     }
   }
 
+  Future<void> _handleShopScanResult(String result) async {
+    final parsed = ScanCodeParser().parse(result);
+    switch (parsed.type) {
+      case ScanCodeType.pay:
+        if (!mounted) return;
+        context.go(
+          Uri(
+            path: '/member-shop-pay',
+            queryParameters: {
+              'payCode': parsed.raw,
+              'shopId': widget.params['shopId'] ?? '',
+            },
+          ).toString(),
+        );
+        return;
+      case ScanCodeType.couponWriteOff:
+        final uuid = parsed.parts.isNotEmpty ? parsed.parts.first.trim() : '';
+        if (uuid.isEmpty) {
+          _toast('无效核销码');
+          await _resume();
+          return;
+        }
+        await _writeOff(uuid);
+        return;
+      case ScanCodeType.user:
+        await _handleCreateMemberScan(parsed);
+        return;
+      case ScanCodeType.shop:
+      case ScanCodeType.unknown:
+        _toast('请扫用户码');
+        await _resume();
+        return;
+    }
+  }
+
+  Future<void> _handleCreateMemberScan(ParsedScanCode parsed) async {
+    final userId = parsed.parts.first.trim();
+    final mobile = parsed.parts.length > 1 ? parsed.parts[1].trim() : '';
+    if (userId.isEmpty || mobile.isEmpty) {
+      _toast('请扫用户码');
+      await _resume();
+      return;
+    }
+    try {
+      final raw = await ref
+          .read(apiClientProvider)
+          .post(
+            TuanTuanEndpoints.checkMember,
+            data: {'userId': userId, 'isShopScan': 1},
+          );
+      final envelope = ApiEnvelope.parse<bool>(raw, _parseIsMember);
+      if (!envelope.isSuccess) {
+        _toast(envelope.message ?? '扫码失败');
+        await _resume();
+        return;
+      }
+      if (!mounted) return;
+      if (envelope.data == true) {
+        _toast('当前账号已经是会员，请勿重复添加');
+        await _resume();
+      } else {
+        context.go(
+          Uri(
+            path: '/create-member',
+            queryParameters: {
+              'userId': userId,
+              'mobile': mobile,
+              'from': 'shop',
+              'shopId': widget.params['shopId'] ?? '',
+              'shopName': widget.params['shopName'] ?? '',
+            },
+          ).toString(),
+        );
+      }
+    } catch (error) {
+      _toast(error.toString());
+      await _resume();
+    }
+  }
+
+  bool _parseIsMember(dynamic data) {
+    if (data is Map) {
+      final value = data['isMember'];
+      return value == true || value == 1 || value?.toString() == 'true';
+    }
+    return false;
+  }
+
+  Future<void> _writeOff(String uuid) async {
+    _lastWriteOffUuid = uuid;
+    if (mounted) {
+      setState(() {
+        _writeOffVisible = true;
+        _writeOffLoading = true;
+        _writeOffSuccess = false;
+        _writeOffFail = false;
+        _writeOffMessage = '';
+      });
+    }
+    try {
+      final raw = await ref
+          .read(apiClientProvider)
+          .post(TuanTuanEndpoints.writeOff, data: {'uuid': uuid});
+      final envelope = ApiEnvelope.parse<void>(raw, (_) {});
+      if (!mounted) return;
+      setState(() {
+        _writeOffLoading = false;
+        _writeOffSuccess = envelope.isSuccess;
+        _writeOffFail = !envelope.isSuccess;
+        _writeOffMessage =
+            envelope.message ?? (envelope.isSuccess ? '核销成功' : '核销失败');
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _writeOffLoading = false;
+        _writeOffSuccess = false;
+        _writeOffFail = true;
+        _writeOffMessage = error.toString();
+      });
+    }
+  }
+
+  Future<void> _closeWriteOff() async {
+    if (!mounted) return;
+    setState(() {
+      _writeOffVisible = false;
+      _handling = false;
+    });
+    await _controller.start();
+  }
+
+  Future<void> _retryWriteOff() async {
+    if (_lastWriteOffUuid.isEmpty) return;
+    await _writeOff(_lastWriteOffUuid);
+  }
+
   Future<void> _resume() async {
     if (!mounted) return;
     setState(() => _handling = false);
@@ -647,33 +821,42 @@ class _ScanCodePageState extends ConsumerState<ScanCodePage> {
           if (_hasPermission)
             MobileScanner(controller: _controller, onDetect: _onDetect)
           else
-            const Center(child: CircularProgressIndicator(color: Colors.white)),
-          const _ScanOverlay(),
+            _CameraPermissionView(onOpenSettings: openAppSettings),
+          if (_hasPermission) const _ScanOverlay(),
+          if (_writeOffVisible)
+            _WriteOffResultOverlay(
+              loading: _writeOffLoading,
+              success: _writeOffSuccess,
+              fail: _writeOffFail,
+              message: _writeOffMessage,
+              onClose: _closeWriteOff,
+              onRetry: _retryWriteOff,
+            ),
           SafeArea(
             child: SizedBox(
               height: kToolbarHeight,
-              child: Stack(
-                alignment: Alignment.center,
+              child: Row(
                 children: [
-                  const Text(
-                    '扫一扫',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
+                  SizedBox(
+                    width: 56,
+                    child: IconButton(
+                      onPressed: () => context.pop(),
+                      icon: const Icon(Icons.chevron_left, color: Colors.white),
+                      iconSize: 34,
                     ),
                   ),
-                  Positioned(
-                    left: 0,
-                    child: IconButton(
-                      onPressed: Navigator.of(context).pop,
-                      icon: const Icon(
-                        Icons.chevron_left,
+                  const Expanded(
+                    child: Text(
+                      '扫一扫',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
                         color: Colors.white,
-                        size: 34,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
+                  const SizedBox(width: 56),
                 ],
               ),
             ),
@@ -735,6 +918,126 @@ class ScanTargetPlaceholderPage extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _WriteOffResultOverlay extends StatelessWidget {
+  const _WriteOffResultOverlay({
+    required this.loading,
+    required this.success,
+    required this.fail,
+    required this.message,
+    required this.onClose,
+    required this.onRetry,
+  });
+
+  final bool loading;
+  final bool success;
+  final bool fail;
+  final String message;
+  final VoidCallback onClose;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = loading
+        ? '正在核销中'
+        : success
+        ? '核销成功'
+        : '核销失败';
+    return Positioned.fill(
+      child: ColoredBox(
+        color: Colors.white,
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Positioned(
+                left: 0,
+                top: 0,
+                child: IconButton(
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close, size: 32),
+                ),
+              ),
+              Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (loading)
+                      Image.asset(
+                        'assets/static/data.gif',
+                        width: 70,
+                        height: 65,
+                      )
+                    else if (success)
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: const BoxDecoration(
+                          color: AppTheme.brand,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.check,
+                          color: Colors.white,
+                          size: 46,
+                        ),
+                      )
+                    else
+                      Image.asset(
+                        'assets/static/image/kq.png',
+                        width: 68,
+                        height: 68,
+                      ),
+                    const SizedBox(height: 20),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      loading ? '请稍等...' : message,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                    if (fail) ...[
+                      const SizedBox(height: 30),
+                      GestureDetector(
+                        onTap: onRetry,
+                        child: Container(
+                          width: 150,
+                          height: 44,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            gradient: AppTheme.brandGradient,
+                            borderRadius: BorderRadius.circular(22),
+                          ),
+                          child: const Text(
+                            '重试',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2282,6 +2585,52 @@ class _ScanOverlay extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CameraPermissionView extends StatelessWidget {
+  const _CameraPermissionView({required this.onOpenSettings});
+
+  final Future<bool> Function() onOpenSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.photo_camera_outlined,
+              color: Colors.white,
+              size: 48,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '需要相机权限',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '请在系统设置中开启相机权限后继续扫码',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Color(0xFFDDDDDD), fontSize: 14),
+            ),
+            const SizedBox(height: 22),
+            FilledButton(
+              onPressed: onOpenSettings,
+              style: FilledButton.styleFrom(backgroundColor: AppTheme.brand),
+              child: const Text('去设置'),
+            ),
+          ],
+        ),
       ),
     );
   }
