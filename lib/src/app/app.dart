@@ -14,6 +14,18 @@ class TuanTuanGoApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       routerConfig: ref.watch(appRouterProvider),
+      builder: (context, child) {
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () {
+            final focus = FocusManager.instance.primaryFocus;
+            if (focus != null && !focus.hasPrimaryFocus) {
+              focus.unfocus();
+            }
+          },
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
     );
   }
 }

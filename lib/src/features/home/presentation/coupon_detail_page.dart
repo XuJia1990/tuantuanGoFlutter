@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../data/home_models.dart';
@@ -72,7 +73,9 @@ class _CouponDetailPageState extends ConsumerState<CouponDetailPage> {
   }
 
   void _handleOrder() {
-    _toast('提交订单页待迁移');
+    context.push(
+      '/submit-order?couponId=${Uri.encodeComponent(widget.couponId)}',
+    );
   }
 
   @override

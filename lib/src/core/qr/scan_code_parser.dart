@@ -14,11 +14,16 @@ class ParsedScanCode {
 
 class ScanCodeParser {
   ParsedScanCode parse(String raw) {
-    if (raw.contains('_pay')) {
+    final underlineParts = raw.split('_');
+    if (raw.contains('_pay') ||
+        (!raw.contains(',') &&
+            underlineParts.length >= 2 &&
+            underlineParts[0].trim().isNotEmpty &&
+            underlineParts[1].trim().isNotEmpty)) {
       return ParsedScanCode(
         type: ScanCodeType.pay,
         raw: raw,
-        parts: raw.split('_'),
+        parts: underlineParts,
       );
     }
     final parts = raw.split(',');

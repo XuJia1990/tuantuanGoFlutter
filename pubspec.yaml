@@ -46,6 +46,7 @@ dependencies:
   webview_flutter: ^4.14.0
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.2.0
+  fluwx: ^5.5.0
 
 dev_dependencies:
   flutter_test:
@@ -57,6 +58,13 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+
+fluwx:
+  app_id: wx65404f22040dbe4d
+  debug_logging: true
+  ios:
+    universal_link: https://share.tuantuan-go.com/
+    scene_delegate: true
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
