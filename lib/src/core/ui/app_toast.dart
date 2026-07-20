@@ -24,8 +24,8 @@ class AppToast {
 
     final entry = OverlayEntry(
       builder: (context) {
-        return IgnorePointer(
-          child: Positioned.fill(
+        return Positioned.fill(
+          child: IgnorePointer(
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 260),
