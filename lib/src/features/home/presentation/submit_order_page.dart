@@ -7,6 +7,7 @@ import '../../../app/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/payment/wechat_pay_service.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
+import '../../../core/ui/app_toast.dart';
 import '../data/home_models.dart';
 
 class SubmitOrderPage extends ConsumerStatefulWidget {
@@ -215,9 +216,7 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
 
   void _showPageToast(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   @override

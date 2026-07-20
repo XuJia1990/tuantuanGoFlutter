@@ -10,6 +10,7 @@ import '../../../app/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
 import '../../../core/storage/app_storage.dart';
+import '../../../core/ui/app_toast.dart';
 import '../../home/data/home_models.dart';
 
 enum _Region {
@@ -81,9 +82,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   String? _normalizedMobile() {
@@ -409,9 +408,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   Future<void> _sendCode() => _sendCodeShared(
@@ -547,9 +544,7 @@ class _ForgetPasswordPageState extends ConsumerState<ForgetPasswordPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   Future<void> _sendCode() => _sendCodeShared(
@@ -692,9 +687,7 @@ class _SetPasswordPageState extends ConsumerState<SetPasswordPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   Future<void> _submit() async {
@@ -1175,12 +1168,10 @@ Future<void> _sendCodeShared({
   required int scene,
   required ValueChanged<int> onCountdown,
 }) async {
-  final messenger = ScaffoldMessenger.of(context);
   final normalized = _normalizeMobile(
     mobile,
     region,
-    onError: (message) =>
-        messenger.showSnackBar(SnackBar(content: Text(message))),
+    onError: (message) => AppToast.show(context, message),
   );
   if (normalized == null) return;
   try {
@@ -1191,18 +1182,16 @@ Future<void> _sendCodeShared({
           data: {'mobile': normalized, 'scene': scene},
         );
     final envelope = ApiEnvelope.parse<void>(raw, (_) {});
+    if (!context.mounted) return;
     if (!envelope.isSuccess) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(envelope.message ?? '验证码发送失败')),
-      );
+      AppToast.show(context, envelope.message ?? '验证码发送失败');
       return;
     }
-    messenger.showSnackBar(
-      SnackBar(content: Text(envelope.message ?? '成功发送验证码')),
-    );
+    AppToast.show(context, envelope.message ?? '成功发送验证码');
     onCountdown(59);
   } catch (error) {
-    messenger.showSnackBar(SnackBar(content: Text(error.toString())));
+    if (!context.mounted) return;
+    AppToast.show(context, error.toString());
   }
 }
 

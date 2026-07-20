@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 
@@ -83,7 +84,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _bootstrapError = error.toString();
+        _bootstrapError = _friendlyError(error, fallback: '首页数据获取失败，请稍后重试');
         _isBootstrapping = false;
       });
     }
@@ -163,12 +164,34 @@ class _HomePageState extends ConsumerState<HomePage> {
       if (!mounted) return;
       setState(() {
         _shopStates[stationId] = _stateFor(stationId).copyWith(
-          error: error.toString(),
+          error: _friendlyError(error, fallback: '店铺列表获取失败，请稍后重试'),
           isInitialLoading: false,
           isLoadingMore: false,
         );
       });
     }
+  }
+
+  String _friendlyError(Object error, {required String fallback}) {
+    if (error is HomeApiException && error.message.trim().isNotEmpty) {
+      return error.message;
+    }
+    if (error is DioException) {
+      final data = error.response?.data;
+      if (data is Map) {
+        final message = data['msg'] ?? data['message'];
+        if (message != null && message.toString().trim().isNotEmpty) {
+          return message.toString();
+        }
+      }
+      return fallback;
+    }
+    final message = error.toString();
+    if (message.startsWith('DioException') ||
+        message.contains('status code of 500')) {
+      return fallback;
+    }
+    return message.isEmpty ? fallback : message;
   }
 
   void _ensureStationLoaded(int stationIndex) {

@@ -12,6 +12,7 @@ import '../../../core/constants/app_assets.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
 import '../../../core/storage/app_storage.dart';
+import '../../../core/ui/app_toast.dart';
 import '../../home/data/home_models.dart';
 
 class CreateMemberPage extends ConsumerStatefulWidget {
@@ -114,9 +115,7 @@ class _CreateMemberPageState extends ConsumerState<CreateMemberPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   @override
@@ -335,9 +334,7 @@ class _ShopMemberDetailListPageState
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   @override
@@ -659,9 +656,7 @@ class _ShopMemberStaticPageState extends ConsumerState<ShopMemberStaticPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   @override
@@ -938,9 +933,7 @@ class _MemberShopPayPageState extends ConsumerState<MemberShopPayPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   @override
@@ -1076,9 +1069,7 @@ class _MemberConsumptionPageState extends ConsumerState<MemberConsumptionPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   @override
@@ -2015,9 +2006,7 @@ class _DateRangePickerSheetState extends State<_DateRangePickerSheet> {
 
   void _confirm() {
     if (_endDate.isBefore(_startDate)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('结束日期不能早于开始日期')));
+      AppToast.show(context, '结束日期不能早于开始日期');
       return;
     }
     Navigator.of(

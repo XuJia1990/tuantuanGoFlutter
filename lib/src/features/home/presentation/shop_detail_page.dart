@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/storage/app_storage.dart';
+import '../../../core/ui/app_toast.dart';
 import '../data/home_models.dart';
 import '../data/home_repository.dart';
 
@@ -181,9 +182,7 @@ class _ShopDetailPageState extends ConsumerState<ShopDetailPage> {
 
   void _toast(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   void _pending(String name) => _toast('$name待迁移');

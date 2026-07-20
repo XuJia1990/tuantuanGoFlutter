@@ -16,6 +16,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
 import '../../../core/qr/scan_code_parser.dart';
 import '../../../core/storage/app_storage.dart';
+import '../../../core/ui/app_toast.dart';
 import '../data/privacy_agreement_text.dart';
 import '../../home/data/home_models.dart';
 import '../../home/presentation/shop_summary_card.dart';
@@ -41,9 +42,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   Future<void> _chooseImage() async {
@@ -327,9 +326,7 @@ class _PayCodePageState extends ConsumerState<PayCodePage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   void _setTimer() {
@@ -602,9 +599,7 @@ class _ScanCodePageState extends ConsumerState<ScanCodePage>
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   Future<void> _onDetect(BarcodeCapture capture) async {
@@ -1293,9 +1288,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   Future<void> _logout() async {
@@ -1526,9 +1519,7 @@ class _ServicePageState extends ConsumerState<ServicePage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   Future<void> _submit() async {

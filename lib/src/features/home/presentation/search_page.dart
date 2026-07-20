@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../core/ui/app_toast.dart';
 import '../data/home_models.dart';
 import '../data/home_repository.dart';
 import 'shop_summary_card.dart';
@@ -87,9 +88,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         _isLoading = false;
         _isLoadingMore = false;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
+      AppToast.show(context, error.toString());
     }
   }
 

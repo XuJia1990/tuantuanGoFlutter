@@ -9,6 +9,7 @@ import '../../../core/constants/app_assets.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
 import '../../../core/storage/app_storage.dart';
+import '../../../core/ui/app_toast.dart';
 import '../../home/data/home_models.dart';
 
 class ShopManagerPage extends ConsumerStatefulWidget {
@@ -149,9 +150,7 @@ class _ShopManagerPageState extends ConsumerState<ShopManagerPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message);
   }
 
   @override

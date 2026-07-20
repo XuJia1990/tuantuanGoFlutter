@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/storage/app_storage.dart';
+import '../../../core/ui/app_toast.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({required this.currentPath, required this.child, super.key});
@@ -77,9 +78,7 @@ class _AppShellState extends ConsumerState<AppShell> {
           if ((tab.path == '/discounts' || tab.path == '/member') &&
               !await ref.read(appStorageProvider).isSignedIn()) {
             if (!context.mounted) return;
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(const SnackBar(content: Text('未登录，请先登录')));
+            AppToast.show(context, '未登录，请先登录');
             context.push('/login');
             return;
           }
