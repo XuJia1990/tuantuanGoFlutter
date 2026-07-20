@@ -28,7 +28,11 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage> {
   _MemberUser _user = const _MemberUser.empty();
   _RechargeShop _shop = const _RechargeShop.empty();
   final _payList = <_PayCategory>[];
+  final _discountTypeList = <_PayCategory>[];
   int _activePayId = 24;
+  int _selectedDiscountTypeId = 0;
+  String _selectedDiscountTypeName = '';
+  String _remark = '';
   bool _loadingShop = true;
   bool _submitting = false;
   bool _handlePayLoad = false;
@@ -62,7 +66,7 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage> {
     final user = await _loadUser();
     if (!mounted) return;
     setState(() => _user = user);
-    await Future.wait([_loadShop(), _loadChargeTypes()]);
+    await Future.wait([_loadShop(), _loadChargeTypes(), _loadDiscountTypes()]);
   }
 
   Future<_MemberUser> _loadUser() async {
@@ -147,6 +151,41 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage> {
     }
   }
 
+  Future<void> _loadDiscountTypes() async {
+    if (_isShopCharge != 1) return;
+    try {
+      final raw = await ref
+          .read(apiClientProvider)
+          .get(TuanTuanEndpoints.discountTypeList);
+      final envelope = ApiEnvelope.parse<List<_PayCategory>>(
+        raw,
+        (data) => data is List
+            ? data
+                  .whereType<Map>()
+                  .map(
+                    (item) =>
+                        _PayCategory.fromJson(Map<String, dynamic>.from(item)),
+                  )
+                  .toList()
+            : const [],
+      );
+      if (!mounted) return;
+      final list = envelope.data ?? const <_PayCategory>[];
+      setState(() {
+        _discountTypeList
+          ..clear()
+          ..addAll(list);
+        if (_discountTypeList.isNotEmpty) {
+          final first = _discountTypeList.first;
+          _selectedDiscountTypeId = first.categoryId;
+          _selectedDiscountTypeName = first.categoryName;
+        }
+      });
+    } catch (_) {
+      _toast('获取充值方式失败');
+    }
+  }
+
   Future<void> _submit() async {
     if (_submitting) return;
     if (_type == 1) {
@@ -168,6 +207,10 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage> {
         return;
       }
     }
+    if (_isShopCharge == 1 && _selectedDiscountTypeId == 0) {
+      _toast('请选择充值方式');
+      return;
+    }
     await _createOrder();
   }
 
@@ -187,10 +230,10 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage> {
       'chargeMoney': _type == 1
           ? _amountController.text
           : num.tryParse(_routeNumber) ?? 0,
-      'remark': '',
+      'remark': _remark,
       'chargeShopId': _shopId,
       'userId': _routeUserId,
-      'discountWay': '',
+      'discountWay': _isShopCharge == 1 ? _selectedDiscountTypeId : '',
     };
 
     try {
@@ -275,45 +318,52 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage> {
 
   @override
   Widget build(BuildContext context) {
+    final title = _isShopCharge == 1 && _shop.name.isNotEmpty
+        ? _shop.name
+        : '会员卡充值';
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.pageBg,
       appBar: AppBar(
         leading: IconButton(
           onPressed: () => context.pop(),
           icon: const Icon(Icons.chevron_left, size: 34),
         ),
-        title: const Text(
-          '会员卡充值',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+        title: Text(
+          title,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
         ),
       ),
       body: _handlePayLoad ? _buildPayResult() : _buildForm(),
       bottomNavigationBar: _handlePayLoad
           ? null
-          : SafeArea(
-              top: false,
-              child: Container(
-                height: 58,
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  border: Border(top: BorderSide(color: Color(0xFFF4F4F4))),
-                ),
-                child: GestureDetector(
-                  onTap: _submit,
-                  child: Container(
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      gradient: _submitting ? null : AppTheme.brandGradient,
-                      color: _submitting ? const Color(0xFFC8C8C8) : null,
-                      borderRadius: BorderRadius.circular(40),
-                    ),
-                    child: Text(
-                      _submitting ? '处理中...' : '确认充值',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+          : Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: Color(0xFFF4F4F4))),
+              ),
+              child: SafeArea(
+                top: false,
+                child: SizedBox(
+                  height: 58,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                    child: GestureDetector(
+                      onTap: _submit,
+                      child: Container(
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          gradient: _submitting ? null : AppTheme.brandGradient,
+                          color: _submitting ? const Color(0xFFC8C8C8) : null,
+                          borderRadius: BorderRadius.circular(40),
+                        ),
+                        child: Text(
+                          _submitting ? '处理中...' : '确认充值',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -326,26 +376,49 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage> {
   Widget _buildForm() {
     return SingleChildScrollView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
       child: Column(
         children: [
           _RechargeCard(
             children: [
-              _ShopLine(shop: _shop, loading: _loadingShop),
-              const Divider(height: 1, color: Color(0xFFF7F7F7)),
-              _InputLine(
-                title: '充值金额',
-                controller: _amountController,
-                hint: '请输入充值金额',
-              ),
-              const Divider(height: 1, color: Color(0xFFF7F7F7)),
-              _InputLine(
-                title: '确认充值金额',
-                controller: _confirmController,
-                hint: '请再次输入充值金额',
-              ),
+              if (_isShopCharge != 1) ...[
+                _ShopLine(shop: _shop, loading: _loadingShop),
+                const Divider(height: 1, color: Color(0xFFF7F7F7)),
+              ],
+              if (_type == 1) ...[
+                _InputLine(
+                  title: '充值金额',
+                  controller: _amountController,
+                  hint: '请输入充值金额',
+                ),
+                const Divider(height: 1, color: Color(0xFFF7F7F7)),
+                _InputLine(
+                  title: '确认充值金额',
+                  controller: _confirmController,
+                  hint: '请再次输入充值金额',
+                ),
+              ] else
+                _AmountLine(amount: _routeNumber),
             ],
           ),
+          if (_isShopCharge == 1)
+            _RechargeCard(
+              children: [
+                _SelectLine(
+                  title: '充值方式',
+                  value: _selectedDiscountTypeName,
+                  hint: '请选择充值方式',
+                  onTap: _showDiscountTypeSheet,
+                ),
+                const Divider(height: 1, color: Color(0xFFF7F7F7)),
+                _SelectLine(
+                  title: '备注',
+                  value: _remark,
+                  hint: '选填，最多不超过50个字',
+                  onTap: _showRemarkSheet,
+                ),
+              ],
+            ),
           if (_isShopCharge == 0)
             const _RechargeCard(
               marginBottom: 0,
@@ -363,33 +436,60 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage> {
                 ),
               ],
             ),
-          const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '支付方式',
-                  style: TextStyle(fontSize: 16, color: AppTheme.textPrimary),
-                ),
-                for (final item in _payList)
-                  _PayChooseItem(
-                    item: item,
-                    selected: _activePayId == item.categoryId,
-                    onTap: () => setState(() => _activePayId = item.categoryId),
-                  ),
-              ],
-            ),
+          _PayMethodCard(
+            title: _isShopCharge == 1 ? '收款方式' : '支付方式',
+            items: _orderedPayList,
+            activePayId: _activePayId,
+            onChanged: (id) => setState(() => _activePayId = id),
           ),
         ],
       ),
     );
+  }
+
+  List<_PayCategory> get _orderedPayList {
+    if (_isShopCharge != 1) return _payList;
+    const order = [24, 25, 26, 27, 23, 28];
+    final sorted = [..._payList];
+    sorted.sort((a, b) {
+      final aIndex = order.indexOf(a.categoryId);
+      final bIndex = order.indexOf(b.categoryId);
+      return (aIndex == -1 ? 999 : aIndex).compareTo(
+        bIndex == -1 ? 999 : bIndex,
+      );
+    });
+    return sorted;
+  }
+
+  Future<void> _showDiscountTypeSheet() async {
+    if (_discountTypeList.isEmpty) {
+      _toast('暂无充值方式');
+      return;
+    }
+    final selected = await showModalBottomSheet<_PayCategory>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _DiscountTypeSheet(
+        items: _discountTypeList,
+        selectedId: _selectedDiscountTypeId,
+      ),
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _selectedDiscountTypeId = selected.categoryId;
+      _selectedDiscountTypeName = selected.categoryName;
+    });
+  }
+
+  Future<void> _showRemarkSheet() async {
+    final remark = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      builder: (context) => _RemarkSheet(initialValue: _remark),
+    );
+    if (remark == null || !mounted) return;
+    setState(() => _remark = remark);
   }
 
   Widget _buildPayResult() {
@@ -429,8 +529,8 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage> {
 class _RechargeCard extends StatelessWidget {
   const _RechargeCard({
     required this.children,
-    this.marginBottom = 16,
-    this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    this.marginBottom = 14,
+    this.padding = const EdgeInsets.symmetric(horizontal: 16),
   });
 
   final List<Widget> children;
@@ -444,7 +544,7 @@ class _RechargeCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(children: children),
     );
@@ -460,7 +560,7 @@ class _ShopLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 55,
+      height: 48,
       child: Row(
         children: [
           ClipOval(
@@ -504,7 +604,7 @@ class _InputLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 55,
+      height: 48,
       child: Row(
         children: [
           Text(
@@ -538,6 +638,406 @@ class _InputLine extends StatelessWidget {
   }
 }
 
+class _AmountLine extends StatelessWidget {
+  const _AmountLine({required this.amount});
+
+  final String amount;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 48,
+      child: Row(
+        children: [
+          const Text(
+            '充值金额',
+            style: TextStyle(fontSize: 17, color: Color(0xFF505050)),
+          ),
+          const Spacer(),
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text(
+              '￥',
+              style: TextStyle(
+                color: AppTheme.brand,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Text(
+            amount,
+            style: const TextStyle(
+              color: AppTheme.brand,
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SelectLine extends StatelessWidget {
+  const _SelectLine({
+    required this.title,
+    required this.value,
+    required this.hint,
+    required this.onTap,
+  });
+
+  final String title;
+  final String value;
+  final String hint;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        height: 48,
+        child: Row(
+          children: [
+            Text(
+              title,
+              style: const TextStyle(fontSize: 17, color: Color(0xFF505050)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                value.isEmpty ? hint : value,
+                textAlign: TextAlign.right,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: value.isEmpty
+                      ? const Color(0xFFCCCCCC)
+                      : AppTheme.textPrimary,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+            const SizedBox(width: 5),
+            const _RightArrowCircle(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RightArrowCircle extends StatelessWidget {
+  const _RightArrowCircle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 17,
+      height: 17,
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        color: Color(0xFFCCCCCC),
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(Icons.chevron_right, color: Colors.white, size: 15),
+    );
+  }
+}
+
+class _RemarkSheet extends StatefulWidget {
+  const _RemarkSheet({required this.initialValue});
+
+  final String initialValue;
+
+  @override
+  State<_RemarkSheet> createState() => _RemarkSheetState();
+}
+
+class _RemarkSheetState extends State<_RemarkSheet> {
+  late final TextEditingController _controller;
+  int _length = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+    _length = widget.initialValue.characters.length;
+    _controller.addListener(() {
+      if (!mounted) return;
+      setState(() => _length = _controller.text.characters.length);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottom),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 420,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 22),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: Stack(
+                    alignment: Alignment.topCenter,
+                    children: [
+                      const SizedBox(
+                        height: 50,
+                        child: Center(
+                          child: Text(
+                            '备注信息',
+                            style: TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => Navigator.of(context).pop(),
+                          child: const SizedBox(
+                            height: 50,
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '取消',
+                                style: TextStyle(
+                                  color: AppTheme.textPrimary,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 50),
+                        child: Stack(
+                          children: [
+                            Container(
+                              height: 140,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF7F7F7),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              padding: const EdgeInsets.fromLTRB(
+                                12,
+                                12,
+                                12,
+                                28,
+                              ),
+                              child: TextField(
+                                controller: _controller,
+                                maxLines: null,
+                                expands: true,
+                                maxLength: 50,
+                                textAlignVertical: TextAlignVertical.top,
+                                decoration: const InputDecoration(
+                                  hintText: '选填，最多50个字',
+                                  hintStyle: TextStyle(
+                                    color: Color(0xFFCCCCCC),
+                                    fontSize: 14,
+                                  ),
+                                  border: InputBorder.none,
+                                  counterText: '',
+                                  isCollapsed: true,
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: AppTheme.textPrimary,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              right: 12,
+                              bottom: 10,
+                              child: Text(
+                                '$_length/50',
+                                style: const TextStyle(
+                                  color: Color(0xFF666666),
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).pop(_controller.text),
+                  child: Container(
+                    height: 40,
+                    width: double.infinity,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      gradient: AppTheme.brandGradient,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      '确 认',
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DiscountTypeSheet extends StatelessWidget {
+  const _DiscountTypeSheet({required this.items, required this.selectedId});
+
+  final List<_PayCategory> items;
+  final int selectedId;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              height: 55,
+              child: Center(
+                child: Text(
+                  '选择充值方式',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            for (final item in items)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(context).pop(item),
+                child: Container(
+                  height: 52,
+                  padding: const EdgeInsets.symmetric(horizontal: 22),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      top: BorderSide(color: Color(0xFFF4F4F4), width: 0.5),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          item.categoryName,
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      if (selectedId == item.categoryId)
+                        const Icon(
+                          Icons.check,
+                          color: AppTheme.brand,
+                          size: 22,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(context).pop(),
+              child: Container(
+                height: 52,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  border: Border(
+                    top: BorderSide(color: Color(0xFFF4F4F4), width: 0.5),
+                  ),
+                ),
+                child: const Text(
+                  '取消',
+                  style: TextStyle(color: AppTheme.textPrimary, fontSize: 16),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PayMethodCard extends StatelessWidget {
+  const _PayMethodCard({
+    required this.title,
+    required this.items,
+    required this.activePayId,
+    required this.onChanged,
+  });
+
+  final String title;
+  final List<_PayCategory> items;
+  final int activePayId;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return _RechargeCard(
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            title,
+            style: const TextStyle(fontSize: 16, color: AppTheme.textPrimary),
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (final item in items)
+          _PayChooseItem(
+            item: item,
+            selected: activePayId == item.categoryId,
+            onTap: () => onChanged(item.categoryId),
+          ),
+      ],
+    );
+  }
+}
+
 class _PayChooseItem extends StatelessWidget {
   const _PayChooseItem({
     required this.item,
@@ -554,29 +1054,29 @@ class _PayChooseItem extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 48,
-        margin: const EdgeInsets.only(top: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        height: 40,
+        margin: const EdgeInsets.only(top: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: selected ? AppTheme.brand : const Color(0xFFEEEEEE),
-            width: 2,
+            width: selected ? 1.5 : 1,
           ),
         ),
         child: Row(
           children: [
-            Image.asset(_payIcon(item.categoryId), width: 26, height: 26),
+            Image.asset(_payIcon(item.categoryId), width: 24, height: 24),
             const SizedBox(width: 8),
             Text(
-              item.categoryName,
-              style: const TextStyle(fontSize: 16, color: Color(0xFF111111)),
+              _payName(item),
+              style: const TextStyle(fontSize: 15, color: Color(0xFF111111)),
             ),
             const Spacer(),
             selected
                 ? Container(
-                    width: 20,
-                    height: 20,
+                    width: 18,
+                    height: 18,
                     decoration: const BoxDecoration(
                       color: AppTheme.brand,
                       shape: BoxShape.circle,
@@ -584,17 +1084,17 @@ class _PayChooseItem extends StatelessWidget {
                     child: const Icon(
                       Icons.check,
                       color: Colors.white,
-                      size: 15,
+                      size: 13,
                     ),
                   )
                 : Container(
-                    width: 20,
-                    height: 20,
+                    width: 18,
+                    height: 18,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: const Color(0xFFCCCCCC),
-                        width: 5,
+                        width: 4,
                       ),
                     ),
                   ),
@@ -676,6 +1176,14 @@ String _payIcon(int id) {
     27 => 'assets/static/image/pos.png',
     28 => 'assets/static/image/qt.png',
     _ => 'assets/static/image/qt.png',
+  };
+}
+
+String _payName(_PayCategory item) {
+  return switch (item.categoryId) {
+    26 => 'PayPay',
+    27 => 'Pos机',
+    _ => item.categoryName,
   };
 }
 
