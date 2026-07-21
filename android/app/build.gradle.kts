@@ -5,6 +5,14 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+import java.util.Properties
+
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.inputStream().use { localProperties.load(it) }
+}
+
 android {
     namespace = "com.tuantuan.go.tuantuan_go_flutter"
     compileSdk = flutter.compileSdkVersion
@@ -19,9 +27,19 @@ android {
         jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
+    signingConfigs {
+        create("tuantuan") {
+            keyAlias = localProperties.getProperty("tuantuan.keyAlias")
+            keyPassword = localProperties.getProperty("tuantuan.keyPassword")
+            storePassword = localProperties.getProperty("tuantuan.storePassword")
+            localProperties.getProperty("tuantuan.storeFile")?.let {
+                storeFile = file(it)
+            }
+        }
+    }
+
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.tuantuan.go.tuantuan_go_flutter"
+        applicationId = "tuantuan.UNI75D75BA"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -31,10 +49,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("tuantuan")
+        }
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("tuantuan")
         }
     }
 }

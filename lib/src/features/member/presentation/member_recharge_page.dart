@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
+import 'package:fluwx/fluwx.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
+import '../../../core/payment/wechat_pay_service.dart';
 import '../../../core/storage/app_storage.dart';
 import '../../../core/ui/app_toast.dart';
 import '../../home/data/home_models.dart';
@@ -21,7 +25,8 @@ class MemberRechargePage extends ConsumerStatefulWidget {
   ConsumerState<MemberRechargePage> createState() => _MemberRechargePageState();
 }
 
-class _MemberRechargePageState extends ConsumerState<MemberRechargePage> {
+class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
+    with WidgetsBindingObserver {
   final _amountController = TextEditingController();
   final _confirmController = TextEditingController();
 
@@ -40,6 +45,10 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage> {
   bool _createFail = false;
   String _failMsg = '';
   _ChargeSuccess? _successData;
+  FluwxCancelable? _paySubscription;
+  Map<String, dynamic>? _pendingChargeQuery;
+  String? _pendingMemberOrderId;
+  bool _checkingWechatStatus = false;
 
   int get _type => int.tryParse(widget.params['type'] ?? '1') ?? 1;
   int get _isShopCharge =>
@@ -51,15 +60,28 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _activePayId = _isShopCharge == 1 ? 23 : 24;
+    _paySubscription = WeChatPayService.instance.fluwx.addSubscriber(
+      _handleWeChatResponse,
+    );
     _loadInitial();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _paySubscription?.cancel();
     _amountController.dispose();
     _confirmController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_checkPendingWechatPay(source: 'app_resumed'));
+    }
   }
 
   Future<void> _loadInitial() async {
@@ -257,12 +279,167 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage> {
       };
 
       if (_activePayId == 24 && _isShopCharge != 1) {
-        _showFail('微信支付功能待接入，请稍后重新充值');
+        _logMemberPay('create_success_start_wechat', {
+          'memberOrderId': memberOrderId,
+          'chargeWay': _activePayId,
+          'isShopCharge': _isShopCharge,
+          'hasWechatPayInfo': body['wechatPayInfo'] is Map,
+        });
+        await _startWechatPay(
+          body['wechatPayInfo'],
+          memberOrderId: memberOrderId,
+          chargeQuery: chargeQuery,
+        );
         return;
       }
       await _chargeMember(chargeQuery);
-    } catch (_) {
+    } catch (error, stackTrace) {
+      _logMemberPay(
+        'create_exception',
+        {'reason': error.toString()},
+        error: error,
+        stackTrace: stackTrace,
+      );
       _showFail('充值失败');
+    }
+  }
+
+  Future<void> _startWechatPay(
+    Object? payInfo, {
+    required String memberOrderId,
+    required Map<String, dynamic> chargeQuery,
+  }) async {
+    final installed = await WeChatPayService.instance.isWeChatInstalled;
+    _logMemberPay('wechat_install_check', {
+      'memberOrderId': memberOrderId,
+      'installed': installed,
+    });
+    if (!installed) {
+      _showFail('请先安装微信');
+      return;
+    }
+    if (payInfo is! Map) {
+      _logMemberPay('wechat_payinfo_missing', {
+        'memberOrderId': memberOrderId,
+        'payInfoType': payInfo.runtimeType.toString(),
+      });
+      _showFail('微信支付参数缺失');
+      return;
+    }
+
+    _pendingMemberOrderId = memberOrderId;
+    _pendingChargeQuery = Map<String, dynamic>.from(chargeQuery);
+
+    try {
+      final payInfoMap = Map<String, dynamic>.from(payInfo);
+      _logMemberPay('wechat_pay_start', {
+        'memberOrderId': memberOrderId,
+        'payInfoKeys': payInfoMap.keys.toList(),
+        'appId': payInfoMap['o_appid'],
+        'prepayId': payInfoMap['o_prepayid'],
+        'partnerId': payInfoMap['o_partnerid'],
+        'timestamp': payInfoMap['o_timestamp'],
+      });
+      final launched = await WeChatPayService.instance.pay(payInfoMap);
+      _logMemberPay('wechat_pay_launched', {
+        'memberOrderId': memberOrderId,
+        'launched': launched,
+      });
+      if (!launched) {
+        _pendingMemberOrderId = null;
+        _pendingChargeQuery = null;
+        _showFail('调起微信支付失败');
+      }
+    } catch (error, stackTrace) {
+      _logMemberPay(
+        'wechat_pay_exception',
+        {'memberOrderId': memberOrderId, 'reason': error.toString()},
+        error: error,
+        stackTrace: stackTrace,
+      );
+      _pendingMemberOrderId = null;
+      _pendingChargeQuery = null;
+      _showFail(error.toString());
+    }
+  }
+
+  Future<void> _handleWeChatResponse(WeChatResponse response) async {
+    if (response is! WeChatPaymentResponse) return;
+    _logMemberPay('wechat_response', {
+      'isSuccessful': response.isSuccessful,
+      'errCode': response.errCode,
+      'errStr': response.errStr,
+      'memberOrderId': _pendingMemberOrderId,
+    });
+    if (response.isSuccessful) {
+      await _checkPendingWechatPay(
+        source: 'wechat_response',
+        markFailedWhenUnfinished: true,
+      );
+    } else {
+      _pendingMemberOrderId = null;
+      _pendingChargeQuery = null;
+      _showFail('微信支付未完成');
+    }
+  }
+
+  Future<void> _checkPendingWechatPay({
+    required String source,
+    bool markFailedWhenUnfinished = false,
+  }) async {
+    final memberOrderId = _pendingMemberOrderId;
+    final chargeQuery = _pendingChargeQuery;
+    if (memberOrderId == null || chargeQuery == null || _checkingWechatStatus) {
+      return;
+    }
+    _checkingWechatStatus = true;
+    try {
+      final raw = await ref
+          .read(apiClientProvider)
+          .get(
+            TuanTuanEndpoints.wechatChargeOrderStatus,
+            query: {'memberOrderId': memberOrderId},
+          );
+      final envelope = ApiEnvelope.parse<Map<String, dynamic>>(
+        raw,
+        (value) => Map<String, dynamic>.from(value as Map),
+      );
+      final isFinished = envelope.data?['isFinished'] == true;
+      _logMemberPay('wechat_status_checked', {
+        'source': source,
+        'memberOrderId': memberOrderId,
+        'success': envelope.isSuccess,
+        'isFinished': isFinished,
+        'message': envelope.message,
+      });
+
+      if (envelope.isSuccess && isFinished) {
+        _pendingMemberOrderId = null;
+        _pendingChargeQuery = null;
+        await _chargeMember(chargeQuery);
+      } else if (markFailedWhenUnfinished) {
+        _pendingMemberOrderId = null;
+        _pendingChargeQuery = null;
+        _showFail(envelope.message ?? '微信支付未完成');
+      }
+    } catch (error, stackTrace) {
+      _logMemberPay(
+        'wechat_status_exception',
+        {
+          'source': source,
+          'memberOrderId': memberOrderId,
+          'reason': error.toString(),
+        },
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (markFailedWhenUnfinished) {
+        _pendingMemberOrderId = null;
+        _pendingChargeQuery = null;
+        _showFail('微信支付结果确认失败');
+      }
+    } finally {
+      _checkingWechatStatus = false;
     }
   }
 
@@ -314,6 +491,22 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage> {
 
   void _toast(String message) {
     AppToast.show(context, message);
+  }
+
+  void _logMemberPay(
+    String event,
+    Map<String, dynamic> data, {
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    developer.log(
+      const JsonEncoder.withIndent(
+        '  ',
+      ).convert({'type': 'member_recharge_payment', 'event': event, ...data}),
+      name: 'MemberRechargePay',
+      error: error,
+      stackTrace: stackTrace,
+    );
   }
 
   @override

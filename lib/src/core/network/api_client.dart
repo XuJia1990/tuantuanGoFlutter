@@ -17,7 +17,7 @@ class ApiClient {
   ApiClient({required AppStorage storage}) : _storage = storage {
     _dio = Dio(
       BaseOptions(
-        baseUrl: ApiConfig.uatBaseUrl,
+        baseUrl: ApiConfig.baseUrl,
         connectTimeout: ApiConfig.connectTimeout,
         receiveTimeout: ApiConfig.receiveTimeout,
         headers: const {

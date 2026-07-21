@@ -25,6 +25,7 @@ ios/Runner/GeneratedPluginRegistrant.*
 android/.gradle/
 android/wcsports.keystore
 android/app/wcsports-release.jks
+android/app/tuantuan.keystore
 android/app/src/main/java/
 android/gradle/wrapper/gradle-wrapper.jar
 android/gradlew

@@ -25,7 +25,32 @@ Flutter migration scaffold for the existing uni-app project at:
 ```sh
 flutter pub get
 flutter analyze
-flutter run
+```
+
+Run UAT:
+
+```sh
+flutter run --dart-define=APP_ENV=uat
+```
+
+Run production:
+
+```sh
+flutter run --dart-define=APP_ENV=prod
+```
+
+Build UAT:
+
+```sh
+flutter build apk --dart-define=APP_ENV=uat
+flutter build ios --dart-define=APP_ENV=uat
+```
+
+Build production:
+
+```sh
+flutter build apk --dart-define=APP_ENV=prod
+flutter build ios --dart-define=APP_ENV=prod
 ```
 
 ## Getting Started
