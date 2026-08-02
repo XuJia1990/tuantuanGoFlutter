@@ -71,6 +71,8 @@ fluwx:
 
 # The following section is specific to Flutter packages.
 flutter:
+  config:
+    enable-lldb-debugging: false
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
