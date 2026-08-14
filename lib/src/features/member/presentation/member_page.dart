@@ -8,6 +8,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
 import '../../../core/storage/app_storage.dart';
 import '../../../core/ui/app_toast.dart';
+import '../../../shared/widgets/cached_image.dart';
 import '../../home/data/home_models.dart';
 
 class MemberPage extends ConsumerStatefulWidget {
@@ -246,65 +247,6 @@ class _MemberPageState extends ConsumerState<MemberPage> {
   }
 }
 
-class MemberTargetPlaceholderPage extends StatelessWidget {
-  const MemberTargetPlaceholderPage({
-    required this.title,
-    required this.sourcePage,
-    required this.params,
-    super.key,
-  });
-
-  final String title;
-  final String sourcePage;
-  final Map<String, String> params;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => context.pop(),
-          icon: const Icon(Icons.chevron_left, size: 34),
-        ),
-        title: Text(title),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '$title 页面待迁移',
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              sourcePage,
-              style: const TextStyle(
-                fontSize: 14,
-                color: AppTheme.textSecondary,
-              ),
-            ),
-            if (params.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              for (final entry in params.entries)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text('${entry.key}: ${entry.value}'),
-                ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _MemberCard extends StatelessWidget {
   const _MemberCard({
     required this.card,
@@ -490,10 +432,10 @@ class _ShopCell extends StatelessWidget {
                           size: 20,
                         ),
                       )
-                    : Image.network(
-                        shop.imageUrl,
+                    : AppCachedNetworkImage(
+                        imageUrl: shop.imageUrl,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Container(
+                        errorWidget: Container(
                           color: Colors.white.withValues(alpha: 0.25),
                           child: const Icon(
                             Icons.storefront_outlined,

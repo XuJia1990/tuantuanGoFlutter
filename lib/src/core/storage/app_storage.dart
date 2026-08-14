@@ -70,6 +70,14 @@ class AppStorage {
     await (await _prefs).setBool(StorageKeys.isGroupManager, value);
   }
 
+  Future<bool> hasShowSplashAd() async {
+    return (await _prefs).getBool(StorageKeys.hasShowSplashAd) ?? false;
+  }
+
+  Future<void> saveHasShowSplashAd(bool value) async {
+    await (await _prefs).setBool(StorageKeys.hasShowSplashAd, value);
+  }
+
   Future<String> getDeviceId() async {
     final prefs = await _prefs;
     final deviceId = prefs.getString(StorageKeys.deviceId);

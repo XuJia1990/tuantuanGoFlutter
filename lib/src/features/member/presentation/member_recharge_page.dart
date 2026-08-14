@@ -14,6 +14,7 @@ import '../../../core/network/tuantuan_endpoints.dart';
 import '../../../core/payment/wechat_pay_service.dart';
 import '../../../core/storage/app_storage.dart';
 import '../../../core/ui/app_toast.dart';
+import '../../../shared/widgets/cached_image.dart';
 import '../../home/data/home_models.dart';
 
 class MemberRechargePage extends ConsumerStatefulWidget {
@@ -216,7 +217,7 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
         _toast('充值金额不能为空');
         return;
       }
-      if (amount == null || amount < 100) {
+      if (amount == null || amount < 1) {
         _toast('充值金额不能小于100');
         return;
       }
@@ -233,7 +234,39 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
       _toast('请选择充值方式');
       return;
     }
+    if (_isShopCharge == 1) {
+      final verified = await _confirmPayPassword();
+      if (!verified) return;
+    }
     await _createOrder();
+  }
+
+  Future<bool> _confirmPayPassword() async {
+    final password = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const _PayPasswordDialog(),
+    );
+    if (password == null) return false;
+    try {
+      final raw = await ref
+          .read(apiClientProvider)
+          .post(
+            TuanTuanEndpoints.checkPayPassword,
+            data: {'payPassword': password},
+          );
+      final envelope = ApiEnvelope.parse<Map<String, dynamic>>(
+        raw,
+        (data) => data is Map ? Map<String, dynamic>.from(data) : {},
+      );
+      final checkResult = envelope.data?['checkResult']?.toString();
+      if (envelope.isSuccess && checkResult == '0') return true;
+      _toast(envelope.message ?? '密码验证失败');
+      return false;
+    } catch (_) {
+      _toast('密码验证失败');
+      return false;
+    }
   }
 
   Future<void> _createOrder() async {
@@ -394,33 +427,45 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
     }
     _checkingWechatStatus = true;
     try {
-      final raw = await ref
-          .read(apiClientProvider)
-          .get(
-            TuanTuanEndpoints.wechatChargeOrderStatus,
-            query: {'memberOrderId': memberOrderId},
-          );
-      final envelope = ApiEnvelope.parse<Map<String, dynamic>>(
-        raw,
-        (value) => Map<String, dynamic>.from(value as Map),
-      );
-      final isFinished = envelope.data?['isFinished'] == true;
-      _logMemberPay('wechat_status_checked', {
-        'source': source,
-        'memberOrderId': memberOrderId,
-        'success': envelope.isSuccess,
-        'isFinished': isFinished,
-        'message': envelope.message,
-      });
+      ApiEnvelope<Map<String, dynamic>>? lastEnvelope;
+      final attempts = markFailedWhenUnfinished ? 3 : 1;
+      for (var attempt = 1; attempt <= attempts; attempt += 1) {
+        final raw = await ref
+            .read(apiClientProvider)
+            .post(
+              TuanTuanEndpoints.wechatChargeOrderStatus,
+              data: {'memberOrderId': memberOrderId},
+            );
+        final envelope = ApiEnvelope.parse<Map<String, dynamic>>(
+          raw,
+          (value) => value is Map ? Map<String, dynamic>.from(value) : {},
+        );
+        lastEnvelope = envelope;
+        final isFinished = envelope.data?['isFinished'] == true;
+        _logMemberPay('wechat_status_checked', {
+          'source': source,
+          'attempt': attempt,
+          'memberOrderId': memberOrderId,
+          'success': envelope.isSuccess,
+          'isFinished': isFinished,
+          'message': envelope.message,
+        });
 
-      if (envelope.isSuccess && isFinished) {
+        if (envelope.isSuccess && isFinished) {
+          _pendingMemberOrderId = null;
+          _pendingChargeQuery = null;
+          await _chargeMember(chargeQuery);
+          return;
+        }
+        if (attempt < attempts) {
+          await Future<void>.delayed(const Duration(seconds: 1));
+        }
+      }
+
+      if (markFailedWhenUnfinished) {
         _pendingMemberOrderId = null;
         _pendingChargeQuery = null;
-        await _chargeMember(chargeQuery);
-      } else if (markFailedWhenUnfinished) {
-        _pendingMemberOrderId = null;
-        _pendingChargeQuery = null;
-        _showFail(envelope.message ?? '微信支付未完成');
+        _showFail(lastEnvelope?.message ?? '微信支付未完成');
       }
     } catch (error, stackTrace) {
       _logMemberPay(
@@ -455,6 +500,7 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
       );
       if (!mounted) return;
       if (envelope.isSuccess && envelope.data != null) {
+        ref.read(authRevisionProvider.notifier).bump();
         setState(() {
           _successData = envelope.data;
           _createSuccess = true;
@@ -493,6 +539,10 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
     AppToast.show(context, message);
   }
 
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   void _logMemberPay(
     String event,
     Map<String, dynamic> data, {
@@ -526,7 +576,13 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
         ),
       ),
-      body: _handlePayLoad ? _buildPayResult() : _buildForm(),
+      body: _handlePayLoad
+          ? _buildPayResult()
+          : Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (_) => _dismissKeyboard(),
+              child: _buildForm(),
+            ),
       bottomNavigationBar: _handlePayLoad
           ? null
           : Container(
@@ -541,7 +597,10 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
                     child: GestureDetector(
-                      onTap: _submit,
+                      onTap: () {
+                        _dismissKeyboard();
+                        _submit();
+                      },
                       child: Container(
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
@@ -655,6 +714,7 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
   }
 
   Future<void> _showDiscountTypeSheet() async {
+    _dismissKeyboard();
     if (_discountTypeList.isEmpty) {
       _toast('暂无充值方式');
       return;
@@ -675,6 +735,7 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
   }
 
   Future<void> _showRemarkSheet() async {
+    _dismissKeyboard();
     final remark = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -715,6 +776,65 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
       subtitle: _failMsg.isEmpty ? '哦豁，不知道啥原因失败了，请重新充值' : _failMsg,
       buttonText: '重新充值',
       onButtonTap: _reCreate,
+    );
+  }
+}
+
+class _PayPasswordDialog extends StatefulWidget {
+  const _PayPasswordDialog();
+
+  @override
+  State<_PayPasswordDialog> createState() => _PayPasswordDialogState();
+}
+
+class _PayPasswordDialogState extends State<_PayPasswordDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _confirm() {
+    final value = _controller.text.trim();
+    if (value.length != 4) return;
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('请输入支付密码', textAlign: TextAlign.center),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        obscureText: true,
+        keyboardType: TextInputType.number,
+        maxLength: 4,
+        textAlign: TextAlign.center,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        style: const TextStyle(
+          fontSize: 26,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 12,
+        ),
+        decoration: const InputDecoration(counterText: ''),
+        onChanged: (_) => setState(() {}),
+        onSubmitted: (_) => _confirm(),
+        onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+      ),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _controller.text.length == 4 ? _confirm : null,
+          child: const Text('确认'),
+        ),
+      ],
     );
   }
 }
@@ -765,7 +885,10 @@ class _ShopLine extends StatelessWidget {
                       color: const Color(0xFFF0F0F0),
                       child: const Icon(Icons.storefront_outlined, size: 19),
                     )
-                  : Image.network(shop.avatar, fit: BoxFit.cover),
+                  : AppCachedNetworkImage(
+                      imageUrl: shop.avatar,
+                      fit: BoxFit.cover,
+                    ),
             ),
           ),
           const SizedBox(width: 10),
@@ -814,6 +937,9 @@ class _InputLine extends StatelessWidget {
                 FilteringTextInputFormatter.digitsOnly,
                 LengthLimitingTextInputFormatter(10),
               ],
+              onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(
+                disposition: UnfocusDisposition.scope,
+              ),
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: const TextStyle(
@@ -973,131 +1099,142 @@ class _RemarkSheetState extends State<_RemarkSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottom),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 420,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 22),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                SizedBox(
-                  width: double.infinity,
-                  child: Stack(
-                    alignment: Alignment.topCenter,
-                    children: [
-                      const SizedBox(
-                        height: 50,
-                        child: Center(
-                          child: Text(
-                            '备注信息',
-                            style: TextStyle(
-                              color: AppTheme.textPrimary,
-                              fontSize: 17,
-                              fontWeight: FontWeight.w500,
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+      child: Padding(
+        padding: EdgeInsets.only(bottom: bottom),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 420,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 22),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: Stack(
+                      alignment: Alignment.topCenter,
+                      children: [
+                        const SizedBox(
+                          height: 50,
+                          child: Center(
+                            child: Text(
+                              '备注信息',
+                              style: TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => Navigator.of(context).pop(),
-                          child: const SizedBox(
-                            height: 50,
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                '取消',
-                                style: TextStyle(
-                                  color: AppTheme.textPrimary,
-                                  fontSize: 16,
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => Navigator.of(context).pop(),
+                            child: const SizedBox(
+                              height: 50,
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  '取消',
+                                  style: TextStyle(
+                                    color: AppTheme.textPrimary,
+                                    fontSize: 16,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 50),
-                        child: Stack(
-                          children: [
-                            Container(
-                              height: 140,
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF7F7F7),
-                                borderRadius: BorderRadius.circular(5),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 50),
+                          child: Stack(
+                            children: [
+                              Container(
+                                height: 140,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF7F7F7),
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  12,
+                                  12,
+                                  28,
+                                ),
+                                child: TextField(
+                                  controller: _controller,
+                                  maxLines: null,
+                                  expands: true,
+                                  maxLength: 50,
+                                  textAlignVertical: TextAlignVertical.top,
+                                  decoration: const InputDecoration(
+                                    hintText: '选填，最多50个字',
+                                    hintStyle: TextStyle(
+                                      color: Color(0xFFCCCCCC),
+                                      fontSize: 14,
+                                    ),
+                                    border: InputBorder.none,
+                                    counterText: '',
+                                    isCollapsed: true,
+                                  ),
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    color: AppTheme.textPrimary,
+                                    height: 1.4,
+                                  ),
+                                  onTapOutside: (_) => FocusManager
+                                      .instance
+                                      .primaryFocus
+                                      ?.unfocus(),
+                                ),
                               ),
-                              padding: const EdgeInsets.fromLTRB(
-                                12,
-                                12,
-                                12,
-                                28,
-                              ),
-                              child: TextField(
-                                controller: _controller,
-                                maxLines: null,
-                                expands: true,
-                                maxLength: 50,
-                                textAlignVertical: TextAlignVertical.top,
-                                decoration: const InputDecoration(
-                                  hintText: '选填，最多50个字',
-                                  hintStyle: TextStyle(
-                                    color: Color(0xFFCCCCCC),
+                              Positioned(
+                                right: 12,
+                                bottom: 10,
+                                child: Text(
+                                  '$_length/50',
+                                  style: const TextStyle(
+                                    color: Color(0xFF666666),
                                     fontSize: 14,
                                   ),
-                                  border: InputBorder.none,
-                                  counterText: '',
-                                  isCollapsed: true,
-                                ),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  color: AppTheme.textPrimary,
-                                  height: 1.4,
                                 ),
                               ),
-                            ),
-                            Positioned(
-                              right: 12,
-                              bottom: 10,
-                              child: Text(
-                                '$_length/50',
-                                style: const TextStyle(
-                                  color: Color(0xFF666666),
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
+                      ],
+                    ),
+                  ),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      FocusScope.of(context).unfocus();
+                      Navigator.of(context).pop(_controller.text);
+                    },
+                    child: Container(
+                      height: 40,
+                      width: double.infinity,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        gradient: AppTheme.brandGradient,
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                    ],
-                  ),
-                ),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(context).pop(_controller.text),
-                  child: Container(
-                    height: 40,
-                    width: double.infinity,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      gradient: AppTheme.brandGradient,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text(
-                      '确 认',
-                      style: TextStyle(color: Colors.white, fontSize: 16),
+                      child: const Text(
+                        '确 认',
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

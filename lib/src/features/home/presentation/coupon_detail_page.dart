@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../core/ui/app_toast.dart';
+import '../../../shared/widgets/cached_image.dart';
 import '../data/home_models.dart';
 import '../data/home_repository.dart';
 
@@ -197,11 +198,10 @@ class _CouponContent extends StatelessWidget {
             width: double.infinity,
             child: coupon.imageUrl.isEmpty
                 ? Container(color: const Color(0xFFF5F5F5))
-                : Image.network(
-                    coupon.imageUrl,
+                : AppCachedNetworkImage(
+                    imageUrl: coupon.imageUrl,
                     fit: BoxFit.contain,
-                    errorBuilder: (_, _, _) =>
-                        Container(color: const Color(0xFFF5F5F5)),
+                    errorWidget: Container(color: const Color(0xFFF5F5F5)),
                   ),
           ),
         ),

@@ -10,6 +10,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
 import '../../../core/storage/app_storage.dart';
 import '../../../core/ui/app_toast.dart';
+import '../../../shared/widgets/cached_image.dart';
 import '../../home/data/home_models.dart';
 
 class ShopManagerPage extends ConsumerStatefulWidget {
@@ -331,10 +332,10 @@ class _ManagedShopCard extends StatelessWidget {
                     Icons.storefront_outlined,
                     color: Color(0xFFAAAAAA),
                   )
-                : Image.network(
-                    shop.imageUrl,
+                : AppCachedNetworkImage(
+                    imageUrl: shop.imageUrl,
                     fit: BoxFit.contain,
-                    errorBuilder: (_, _, _) => const Icon(
+                    errorWidget: const Icon(
                       Icons.storefront_outlined,
                       color: Color(0xFFAAAAAA),
                     ),

@@ -193,16 +193,20 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (avatar.isNotEmpty) await storage.saveUserAvatar(avatar);
     final userId = user['userId']?.toString();
     if (userId == null || userId.isEmpty) return;
-    final groupRaw = await ref
-        .read(apiClientProvider)
-        .post(TuanTuanEndpoints.isGroupManager, data: {'userId': userId});
-    final groupEnvelope = ApiEnvelope.parse<bool>(
-      groupRaw,
-      (data) => data == true || data == 1 || data?.toString() == 'true',
-    );
-    await storage.saveIsGroupManager(
-      groupEnvelope.isSuccess && groupEnvelope.data == true,
-    );
+    try {
+      final groupRaw = await ref
+          .read(apiClientProvider)
+          .post(TuanTuanEndpoints.isGroupManager, data: {'userId': userId});
+      final groupEnvelope = ApiEnvelope.parse<bool>(
+        groupRaw,
+        (data) => data == true || data == 1 || data?.toString() == 'true',
+      );
+      await storage.saveIsGroupManager(
+        groupEnvelope.isSuccess && groupEnvelope.data == true,
+      );
+    } catch (_) {
+      await storage.saveIsGroupManager(false);
+    }
   }
 
   @override
@@ -342,7 +346,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       ),
                       const SizedBox(width: 6),
                       GestureDetector(
-                        onTap: () => _toast('法律条款及隐私政策待迁移'),
+                        onTap: () => context.push('/privacy-agreement?type=4'),
                         child: const Text(
                           '《法律条款及隐私政策》',
                           style: TextStyle(fontSize: 14, color: AppTheme.brand),

@@ -375,11 +375,11 @@ class _RecordCardContent extends StatelessWidget {
               child: Column(
                 children: [
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Expanded(
                         child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Flexible(
                               child: Text(
@@ -393,31 +393,43 @@ class _RecordCardContent extends StatelessWidget {
                             if (item.tipText.isNotEmpty) ...[
                               const SizedBox(width: 8),
                               Flexible(
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (item.paymentIcon.isNotEmpty)
-                                      Image.asset(
-                                        item.paymentIcon,
-                                        width: 16,
-                                        height: 16,
-                                      ),
-                                    if (item.paymentIcon.isNotEmpty)
-                                      const SizedBox(width: 3),
-                                    Flexible(
-                                      child: Text(
-                                        item.tipText,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: item.tipText == '已全额退款'
-                                              ? Colors.red
-                                              : const Color(0xFFC1C1C1),
+                                child: SizedBox(
+                                  height: 20,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      if (item.paymentIcon.isNotEmpty)
+                                        Image.asset(
+                                          item.paymentIcon,
+                                          width: 16,
+                                          height: 16,
+                                          fit: BoxFit.contain,
+                                        ),
+                                      if (item.paymentIcon.isNotEmpty)
+                                        const SizedBox(width: 3),
+                                      Flexible(
+                                        child: Text(
+                                          item.tipText,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          strutStyle: const StrutStyle(
+                                            fontSize: 12,
+                                            height: 1,
+                                            forceStrutHeight: true,
+                                          ),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            height: 1,
+                                            color: item.tipText == '已全额退款'
+                                                ? Colors.red
+                                                : const Color(0xFFC1C1C1),
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],

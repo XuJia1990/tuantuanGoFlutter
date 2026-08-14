@@ -215,8 +215,10 @@ class CouponSummary {
 class CouponMain {
   const CouponMain({
     required this.couponId,
+    required this.shopId,
     required this.shopName,
     required this.logoImageUrl,
+    required this.address,
     required this.categoryName,
     required this.distance,
     required this.couponName,
@@ -224,11 +226,15 @@ class CouponMain {
     required this.oriPrice,
     required this.discountRate,
     required this.imageUrl,
+    required this.isFav,
+    required this.items,
   });
 
   final String couponId;
+  final String shopId;
   final String shopName;
   final String logoImageUrl;
+  final String address;
   final String categoryName;
   final int distance;
   final String couponName;
@@ -236,17 +242,22 @@ class CouponMain {
   final double oriPrice;
   final int discountRate;
   final String imageUrl;
+  final bool isFav;
+  final List<CouponDetailItem> items;
 
   factory CouponMain.fromJson(Map<String, dynamic> json) {
     final rawImages = json['imageList'];
     final rawCategories = json['categoryList'];
+    final rawItems = json['couponDetailList'];
     return CouponMain(
       couponId: json['couponId']?.toString() ?? '',
+      shopId: json['shopId']?.toString() ?? '',
       shopName: json['name']?.toString() ?? '',
       logoImageUrl:
           json['logoImageURL']?.toString() ??
           json['logoImageUrl']?.toString() ??
           '',
+      address: json['address']?.toString() ?? '',
       categoryName:
           rawCategories is List &&
               rawCategories.isNotEmpty &&
@@ -263,6 +274,36 @@ class CouponMain {
       imageUrl: rawImages is List && rawImages.isNotEmpty
           ? _couponImage(rawImages.first)
           : '',
+      isFav: json['isFav'] == true || json['isFav'] == 1,
+      items: rawItems is List
+          ? rawItems
+                .whereType<Map>()
+                .map(
+                  (item) => CouponDetailItem.fromJson(
+                    Map<String, dynamic>.from(item),
+                  ),
+                )
+                .toList()
+          : const [],
+    );
+  }
+
+  CouponMain copyWith({bool? isFav, List<CouponDetailItem>? items}) {
+    return CouponMain(
+      couponId: couponId,
+      shopId: shopId,
+      shopName: shopName,
+      logoImageUrl: logoImageUrl,
+      address: address,
+      categoryName: categoryName,
+      distance: distance,
+      couponName: couponName,
+      couponPrice: couponPrice,
+      oriPrice: oriPrice,
+      discountRate: discountRate,
+      imageUrl: imageUrl,
+      isFav: isFav ?? this.isFav,
+      items: items ?? this.items,
     );
   }
 }

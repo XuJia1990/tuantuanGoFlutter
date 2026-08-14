@@ -9,6 +9,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
 import '../../../core/storage/app_storage.dart';
 import '../../../core/ui/app_toast.dart';
+import '../../../shared/widgets/cached_image.dart';
 import '../../home/data/home_models.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
@@ -70,6 +71,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       if (user.avatar.isNotEmpty) {
         await storage.saveUserAvatar(user.avatar);
       }
+      await _refreshGroupManagerStatus(storage, user.userId);
       if (mounted) {
         setState(() {
           _user = user;
@@ -78,6 +80,28 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       }
     } catch (_) {
       // uni-app 这里失败时保持本地缓存展示，不打断页面使用。
+    }
+  }
+
+  Future<void> _refreshGroupManagerStatus(
+    AppStorage storage,
+    String userId,
+  ) async {
+    if (userId.isEmpty) return;
+    try {
+      final raw = await ref
+          .read(apiClientProvider)
+          .post(TuanTuanEndpoints.isGroupManager, data: {'userId': userId});
+      final envelope = ApiEnvelope.parse<bool>(
+        raw,
+        (data) => data == true || data == 1 || data?.toString() == 'true',
+      );
+      await storage.saveIsGroupManager(
+        envelope.isSuccess && envelope.data == true,
+      );
+      ref.invalidate(isGroupManagerProvider);
+    } catch (_) {
+      // 身份接口失败时保持上一次状态，避免临时网络问题隐藏店铺管理入口。
     }
   }
 
@@ -197,6 +221,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                               icon: 'assets/static/image/my-4.png',
                               title: '关于我们',
                               onTap: () => _pushLoginRequired('/about-us'),
+                            ),
+                          ],
+                        ),
+                        _ProfileMenuGroup(
+                          items: [
+                            _ProfileMenuItem(
+                              icon: 'assets/static/image/xs.png',
+                              title: '销售数据',
+                              onTap: () => _pushLoginRequired('/sales-data'),
                             ),
                           ],
                         ),
@@ -399,13 +432,12 @@ class _UserHeader extends StatelessWidget {
                             border: Border.all(color: Colors.white, width: 2),
                           ),
                           child: avatar.isNotEmpty
-                              ? Image.network(
-                                  avatar,
+                              ? AppCachedNetworkImage(
+                                  imageUrl: avatar,
                                   width: 80,
                                   height: 80,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) =>
-                                      _DefaultAvatar(size: 56),
+                                  errorWidget: _DefaultAvatar(size: 56),
                                 )
                               : _DefaultAvatar(size: 56),
                         ),
@@ -554,7 +586,7 @@ class _ProfileMenuGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 112,
+      height: items.length * 56,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white,

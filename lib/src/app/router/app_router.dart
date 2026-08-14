@@ -5,7 +5,10 @@ import 'package:go_router/go_router.dart';
 import '../../features/auth/presentation/login_page.dart';
 import '../../features/discounts/presentation/discounts_page.dart';
 import '../../features/home/presentation/coupon_detail_page.dart';
+import '../../features/home/presentation/coupon_order_detail_page.dart';
+import '../../features/home/presentation/discount_detail_page.dart';
 import '../../features/home/presentation/home_page.dart';
+import '../../features/home/presentation/rating_page.dart';
 import '../../features/home/presentation/search_page.dart';
 import '../../features/home/presentation/shop_detail_page.dart';
 import '../../features/home/presentation/submit_order_page.dart';
@@ -14,6 +17,7 @@ import '../../features/member/presentation/member_recharge_page.dart';
 import '../../features/member/presentation/member_record_page.dart';
 import '../../features/member/presentation/shop_member_pages.dart';
 import '../../features/profile/presentation/profile_page.dart';
+import '../../features/profile/presentation/sales_data_page.dart';
 import '../../features/profile/presentation/profile_sub_pages.dart';
 import '../../features/shop_manager/presentation/shop_manager_page.dart';
 import '../../features/shell/presentation/app_shell.dart';
@@ -85,8 +89,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/search', builder: (context, state) => const SearchPage()),
       GoRoute(
+        path: '/rating',
+        builder: (context, state) {
+          return RatingPage(
+            shopId: state.uri.queryParameters['shopId'] ?? '',
+            shopName: state.uri.queryParameters['name'] ?? '',
+          );
+        },
+      ),
+      GoRoute(
         path: '/edit-profile',
         builder: (context, state) => const EditProfilePage(),
+      ),
+      GoRoute(
+        path: '/avatar-cropper',
+        builder: (context, state) {
+          return AvatarCropperPage(
+            path: state.uri.queryParameters['path'] ?? '',
+          );
+        },
       ),
       GoRoute(
         path: '/purchased-coupons',
@@ -101,12 +122,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const SettingsPage(),
       ),
       GoRoute(
+        path: '/set-pay-password',
+        builder: (context, state) => const SetPayPasswordPage(),
+      ),
+      GoRoute(
         path: '/about-us',
         builder: (context, state) => const AboutUsPage(),
       ),
       GoRoute(
         path: '/service',
         builder: (context, state) => const ServicePage(),
+      ),
+      GoRoute(
+        path: '/sales-data',
+        builder: (context, state) => const SalesDataPage(),
+      ),
+      GoRoute(
+        path: '/sales-data-range',
+        builder: (context, state) => const SalesDataRangePage(),
       ),
       GoRoute(
         path: '/member-code',
@@ -194,6 +227,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
+        path: '/discount-detail',
+        builder: (context, state) {
+          return DiscountDetailPage(params: state.uri.queryParameters);
+        },
+      ),
+      GoRoute(
         path: '/submit-order',
         builder: (context, state) {
           return SubmitOrderPage(
@@ -205,11 +244,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/coupon-order-detail',
         builder: (context, state) {
-          return ScanTargetPlaceholderPage(
-            title: '团购详情',
-            sourcePage: 'pages/detail/handleDiscountDetail.vue',
-            params: state.uri.queryParameters,
-          );
+          return CouponOrderDetailPage(params: state.uri.queryParameters);
         },
       ),
       GoRoute(

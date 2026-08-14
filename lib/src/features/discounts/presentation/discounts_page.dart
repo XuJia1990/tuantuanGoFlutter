@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../core/constants/app_assets.dart';
+import '../../../shared/widgets/cached_image.dart';
 import '../../home/data/home_models.dart';
 import '../../home/data/home_repository.dart';
 
@@ -198,9 +199,25 @@ class _DiscountsPageState extends ConsumerState<DiscountsPage> {
     _ensureStationLoaded(index);
   }
 
-  void _openCoupon(CouponMain coupon) {
-    final title = Uri.encodeComponent(coupon.couponName);
-    context.push('/coupon/${coupon.couponId}?title=$title');
+  void _openCoupon(CouponMain coupon, int index) {
+    final stationId = _stations.isEmpty
+        ? ''
+        : _stations[_currentStation].stationId;
+    context.push(
+      Uri(
+        path: '/discount-detail',
+        queryParameters: {
+          'couponId': coupon.couponId,
+          'title': coupon.couponName,
+          'shopId': coupon.shopId,
+          'shopName': coupon.shopName,
+          'index': index.toString(),
+          'pageNo': ((index ~/ 10) + 1).toString(),
+          'stationId': stationId,
+          'total': _stateFor(stationId).total.toString(),
+        },
+      ).toString(),
+    );
   }
 
   @override
@@ -321,7 +338,7 @@ class _DiscountStationPage extends StatelessWidget {
   final RefreshCallback onRefresh;
   final VoidCallback onLoadMore;
   final VoidCallback onRetry;
-  final ValueChanged<CouponMain> onCouponTap;
+  final void Function(CouponMain coupon, int index) onCouponTap;
 
   @override
   Widget build(BuildContext context) {
@@ -391,7 +408,7 @@ class _DiscountStationPage extends StatelessWidget {
               child: _DiscountCouponCard(
                 coupon: coupon,
                 palette: palette,
-                onTap: () => onCouponTap(coupon),
+                onTap: () => onCouponTap(coupon, index),
               ),
             );
           },
@@ -642,11 +659,12 @@ class _DiscountCouponCard extends StatelessWidget {
                               height: 40,
                               child: coupon.logoImageUrl.isEmpty
                                   ? Container(color: Colors.white24)
-                                  : Image.network(
-                                      coupon.logoImageUrl,
+                                  : AppCachedNetworkImage(
+                                      imageUrl: coupon.logoImageUrl,
                                       fit: BoxFit.cover,
-                                      errorBuilder: (_, _, _) =>
-                                          Container(color: Colors.white24),
+                                      errorWidget: Container(
+                                        color: Colors.white24,
+                                      ),
                                     ),
                             ),
                           ),
@@ -734,10 +752,10 @@ class _DiscountCouponCard extends StatelessWidget {
                                       ? Container(
                                           color: const Color(0xFFF0F0F0),
                                         )
-                                      : Image.network(
-                                          coupon.imageUrl,
+                                      : AppCachedNetworkImage(
+                                          imageUrl: coupon.imageUrl,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (_, _, _) => Container(
+                                          errorWidget: Container(
                                             color: const Color(0xFFF0F0F0),
                                           ),
                                         ),

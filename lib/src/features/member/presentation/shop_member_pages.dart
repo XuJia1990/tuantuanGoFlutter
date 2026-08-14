@@ -13,7 +13,16 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
 import '../../../core/storage/app_storage.dart';
 import '../../../core/ui/app_toast.dart';
+import '../../../shared/widgets/cached_image.dart';
 import '../../home/data/home_models.dart';
+
+void _safeMemberBack(BuildContext context, {String fallback = '/member'}) {
+  if (context.canPop()) {
+    context.pop();
+  } else {
+    context.go(fallback);
+  }
+}
 
 class CreateMemberPage extends ConsumerStatefulWidget {
   const CreateMemberPage({required this.params, super.key});
@@ -124,7 +133,13 @@ class _CreateMemberPageState extends ConsumerState<CreateMemberPage> {
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
         backgroundColor: AppTheme.pageBg,
-        appBar: _SimpleAppBar(title: '创建会员', onBack: () => context.pop()),
+        appBar: _SimpleAppBar(
+          title: '创建会员',
+          onBack: () => _safeMemberBack(
+            context,
+            fallback: _from == 'shop' ? '/shop-manager' : '/member',
+          ),
+        ),
         body: ListView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.all(20),
@@ -342,7 +357,10 @@ class _ShopMemberDetailListPageState
     final title = _total > 0 ? '会员详情（$_total人）' : '会员详情';
     return Scaffold(
       backgroundColor: AppTheme.pageBg,
-      appBar: _SimpleAppBar(title: title, onBack: () => context.pop()),
+      appBar: _SimpleAppBar(
+        title: title,
+        onBack: () => _safeMemberBack(context),
+      ),
       body: Stack(
         children: [
           Column(
@@ -664,7 +682,10 @@ class _ShopMemberStaticPageState extends ConsumerState<ShopMemberStaticPage> {
     final dateLabel = '${_dateSlash(_startDate)}-${_dateSlash(_endDate)}';
     return Scaffold(
       backgroundColor: AppTheme.pageBg,
-      appBar: _SimpleAppBar(title: _shopName, onBack: () => context.pop()),
+      appBar: _SimpleAppBar(
+        title: _shopName,
+        onBack: () => _safeMemberBack(context, fallback: '/shop-manager'),
+      ),
       body: Stack(
         children: [
           Column(
@@ -781,6 +802,7 @@ class MemberShopPayPage extends ConsumerStatefulWidget {
 class _MemberShopPayPageState extends ConsumerState<MemberShopPayPage> {
   final _amountController = TextEditingController();
   Timer? _debounce;
+  ProviderSubscription<int>? _balanceSubscription;
   _LocalUser _user = const _LocalUser.empty();
   _CheckoutInfo _info = const _CheckoutInfo.empty();
   bool _loading = true;
@@ -798,11 +820,17 @@ class _MemberShopPayPageState extends ConsumerState<MemberShopPayPage> {
   @override
   void initState() {
     super.initState();
+    _balanceSubscription = ref.listenManual<int>(authRevisionProvider, (_, _) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadCheckoutInfo();
+      });
+    });
     _init();
   }
 
   @override
   void dispose() {
+    _balanceSubscription?.close();
     _debounce?.cancel();
     _amountController.dispose();
     super.dispose();
@@ -875,6 +903,9 @@ class _MemberShopPayPageState extends ConsumerState<MemberShopPayPage> {
           );
       final envelope = ApiEnvelope.parse<void>(raw, (_) {});
       if (!mounted) return;
+      if (envelope.isSuccess) {
+        ref.read(authRevisionProvider.notifier).bump();
+      }
       setState(() {
         _submitting = false;
         _paySuccess = envelope.isSuccess;
@@ -948,7 +979,7 @@ class _MemberShopPayPageState extends ConsumerState<MemberShopPayPage> {
       success: _paySuccess,
       fail: _payFail,
       onSubmit: _submit,
-      onBack: () => context.pop(),
+      onBack: () => _safeMemberBack(context, fallback: '/shop-manager'),
       onDone: () => context.go('/shop-manager'),
       onRetry: () {
         setState(() {
@@ -984,6 +1015,7 @@ class MemberConsumptionPage extends ConsumerStatefulWidget {
 
 class _MemberConsumptionPageState extends ConsumerState<MemberConsumptionPage> {
   final _amountController = TextEditingController();
+  ProviderSubscription<int>? _balanceSubscription;
   _LocalUser _user = const _LocalUser.empty();
   _CheckoutInfo _info = const _CheckoutInfo.empty();
   bool _loading = true;
@@ -996,11 +1028,17 @@ class _MemberConsumptionPageState extends ConsumerState<MemberConsumptionPage> {
   @override
   void initState() {
     super.initState();
+    _balanceSubscription = ref.listenManual<int>(authRevisionProvider, (_, _) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadCheckoutInfo();
+      });
+    });
     _init();
   }
 
   @override
   void dispose() {
+    _balanceSubscription?.close();
     _amountController.dispose();
     super.dispose();
   }
@@ -1008,6 +1046,10 @@ class _MemberConsumptionPageState extends ConsumerState<MemberConsumptionPage> {
   Future<void> _init() async {
     final user = await _LocalUser.load(ref.read(appStorageProvider));
     if (mounted) setState(() => _user = user);
+    await _loadCheckoutInfo();
+  }
+
+  Future<void> _loadCheckoutInfo() async {
     try {
       final raw = await ref
           .read(apiClientProvider)
@@ -1058,6 +1100,9 @@ class _MemberConsumptionPageState extends ConsumerState<MemberConsumptionPage> {
           );
       final envelope = ApiEnvelope.parse<void>(raw, (_) {});
       if (!mounted) return;
+      if (envelope.isSuccess) {
+        ref.read(authRevisionProvider.notifier).bump();
+      }
       setState(() {
         _paySuccess = envelope.isSuccess;
         _payFail = !envelope.isSuccess;
@@ -1084,7 +1129,7 @@ class _MemberConsumptionPageState extends ConsumerState<MemberConsumptionPage> {
       success: _paySuccess,
       fail: _payFail,
       onSubmit: _submit,
-      onBack: () => context.pop(),
+      onBack: () => _safeMemberBack(context),
       onDone: () => context.go('/member'),
       onRetry: () {
         setState(() {
@@ -1153,29 +1198,33 @@ class _CheckoutScaffold extends StatelessWidget {
               child: Column(
                 children: [
                   SizedBox(
-                    height: kToolbarHeight,
+                    height: 64,
+                    width: double.infinity,
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
                         Positioned(
-                          left: 0,
+                          left: 12,
                           child: IconButton(
                             onPressed: onBack,
                             icon: const Icon(
                               Icons.chevron_left,
-                              size: 36,
+                              size: 34,
                               color: Colors.white,
                             ),
                           ),
                         ),
-                        Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 72),
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ],
@@ -1209,32 +1258,35 @@ class _CheckoutScaffold extends StatelessWidget {
                                   child: Column(
                                     children: [
                                       SizedBox(
-                                        height: 79,
+                                        height: 96,
                                         child: Row(
                                           children: [
-                                            ClipOval(
-                                              child: SizedBox(
-                                                width: 42,
-                                                height: 42,
-                                                child: info.imageUrl.isEmpty
-                                                    ? Image.asset(
+                                            SizedBox(
+                                              width: 96,
+                                              height: 58,
+                                              child: info.imageUrl.isEmpty
+                                                  ? Image.asset(
+                                                      'assets/static/logott.png',
+                                                      fit: BoxFit.contain,
+                                                    )
+                                                  : AppCachedNetworkImage(
+                                                      imageUrl: info.imageUrl,
+                                                      fit: BoxFit.contain,
+                                                      errorWidget: Image.asset(
                                                         'assets/static/logott.png',
-                                                      )
-                                                    : Image.network(
-                                                        info.imageUrl,
-                                                        fit: BoxFit.cover,
+                                                        fit: BoxFit.contain,
                                                       ),
-                                              ),
+                                                    ),
                                             ),
-                                            const SizedBox(width: 10),
+                                            const SizedBox(width: 12),
                                             Expanded(
                                               child: Text(
                                                 info.shopName,
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
                                                 style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 18,
+                                                  color: AppTheme.textPrimary,
+                                                  fontSize: 22,
                                                   fontWeight: FontWeight.w700,
                                                 ),
                                               ),
@@ -1242,7 +1294,7 @@ class _CheckoutScaffold extends StatelessWidget {
                                           ],
                                         ),
                                       ),
-                                      const SizedBox(height: 78),
+                                      const SizedBox(height: 61),
                                       _CheckoutLine(
                                         label: '账号',
                                         value: account,
@@ -1418,7 +1470,10 @@ class _ShopMemberCard extends StatelessWidget {
                       height: 42,
                       child: item.avatar.isEmpty
                           ? Image.asset('assets/static/logott.png')
-                          : Image.network(item.avatar, fit: BoxFit.cover),
+                          : AppCachedNetworkImage(
+                              imageUrl: item.avatar,
+                              fit: BoxFit.cover,
+                            ),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -1886,7 +1941,9 @@ class _StatisticChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10),
         color: const Color(0x662D0F00),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment: compact
+              ? MainAxisAlignment.center
+              : MainAxisAlignment.start,
           children: [
             Icon(icon, color: Colors.white, size: 16),
             if (!compact) const SizedBox(width: 4),

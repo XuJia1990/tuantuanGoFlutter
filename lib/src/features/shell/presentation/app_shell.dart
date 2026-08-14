@@ -71,27 +71,37 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     return Scaffold(
       body: widget.child,
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: index < 0 ? 0 : index,
-        onTap: (value) async {
-          final tab = tabs[value];
-          if ((tab.path == '/discounts' || tab.path == '/member') &&
-              !await ref.read(appStorageProvider).isSignedIn()) {
-            if (!context.mounted) return;
-            AppToast.show(context, '未登录，请先登录');
-            context.push('/login');
-            return;
-          }
-          if (context.mounted) context.go(tab.path);
-        },
-        items: [
-          for (final tab in tabs)
-            BottomNavigationBarItem(
-              icon: _TabIcon(asset: tab.iconPath),
-              activeIcon: _TabIcon(asset: tab.activeIconPath),
-              label: tab.label,
-            ),
-        ],
+      bottomNavigationBar: Theme(
+        data: Theme.of(context).copyWith(
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          focusColor: Colors.transparent,
+          splashFactory: NoSplash.splashFactory,
+        ),
+        child: BottomNavigationBar(
+          currentIndex: index < 0 ? 0 : index,
+          enableFeedback: false,
+          onTap: (value) async {
+            final tab = tabs[value];
+            if ((tab.path == '/discounts' || tab.path == '/member') &&
+                !await ref.read(appStorageProvider).isSignedIn()) {
+              if (!context.mounted) return;
+              AppToast.show(context, '未登录，请先登录');
+              context.push('/login');
+              return;
+            }
+            if (context.mounted) context.go(tab.path);
+          },
+          items: [
+            for (final tab in tabs)
+              BottomNavigationBarItem(
+                icon: _TabIcon(asset: tab.iconPath),
+                activeIcon: _TabIcon(asset: tab.activeIconPath),
+                label: tab.label,
+              ),
+          ],
+        ),
       ),
     );
   }

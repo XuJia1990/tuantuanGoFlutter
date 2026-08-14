@@ -1,7 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -17,6 +21,7 @@ import '../../../core/network/tuantuan_endpoints.dart';
 import '../../../core/qr/scan_code_parser.dart';
 import '../../../core/storage/app_storage.dart';
 import '../../../core/ui/app_toast.dart';
+import '../../../shared/widgets/cached_image.dart';
 import '../data/privacy_agreement_text.dart';
 import '../../home/data/home_models.dart';
 import '../../home/presentation/shop_summary_card.dart';
@@ -46,15 +51,43 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
   Future<void> _chooseImage() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.white,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('从相册选择'),
+                onTap: () => context.pop(ImageSource.gallery),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('拍照'),
+                onTap: () => context.pop(ImageSource.camera),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (source == null) return;
     final image = await _picker.pickImage(
-      source: ImageSource.gallery,
+      source: source,
       maxWidth: 600,
       maxHeight: 600,
       imageQuality: 85,
     );
     if (image == null) return;
-    final bytes = await image.readAsBytes();
-    setState(() => _base64 = 'data:image/jpeg;base64,${base64Encode(bytes)}');
+    if (!mounted) return;
+    final cropped = await context.push<String>(
+      '/avatar-cropper?path=${Uri.encodeComponent(image.path)}',
+    );
+    if (!mounted || cropped == null || cropped.isEmpty) return;
+    setState(() => _base64 = cropped);
   }
 
   Future<void> _save() async {
@@ -64,6 +97,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       return;
     }
     setState(() => _loading = true);
+    final storage = ref.read(appStorageProvider);
     final data = <String, dynamic>{};
     if (_base64 != null && _base64!.isNotEmpty) data['base64'] = _base64;
     if (nickname.isNotEmpty) data['nickname'] = nickname;
@@ -84,14 +118,13 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         (data) => Map<String, dynamic>.from(data as Map),
       );
       if (detail.isSuccess && detail.data != null) {
-        await ref
-            .read(appStorageProvider)
-            .saveUserDetail(jsonEncode(detail.data));
+        await storage.saveUserDetail(jsonEncode(detail.data));
         final avatar = detail.data!['avatar']?.toString() ?? '';
         if (avatar.isNotEmpty) {
-          await ref.read(appStorageProvider).saveUserAvatar(avatar);
+          await storage.saveUserAvatar(avatar);
         }
       }
+      ref.read(authRevisionProvider.notifier).bump();
       _toast('修改成功');
       if (mounted) context.go('/profile');
     } catch (error) {
@@ -171,6 +204,144 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
             ],
           ),
           if (_loading) const _LoadingOverlay(),
+        ],
+      ),
+    );
+  }
+}
+
+class AvatarCropperPage extends StatefulWidget {
+  const AvatarCropperPage({required this.path, super.key});
+
+  final String path;
+
+  @override
+  State<AvatarCropperPage> createState() => _AvatarCropperPageState();
+}
+
+class _AvatarCropperPageState extends State<AvatarCropperPage> {
+  final _boundaryKey = GlobalKey();
+  final _picker = ImagePicker();
+  late String _path = widget.path;
+  bool _saving = false;
+
+  Future<void> _replaceImage() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.white,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('从相册选择'),
+                onTap: () => context.pop(ImageSource.gallery),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('拍照'),
+                onTap: () => context.pop(ImageSource.camera),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (source == null) return;
+    final image = await _picker.pickImage(
+      source: source,
+      maxWidth: 900,
+      maxHeight: 900,
+      imageQuality: 90,
+    );
+    if (image == null || !mounted) return;
+    setState(() => _path = image.path);
+  }
+
+  Future<void> _confirm() async {
+    setState(() => _saving = true);
+    try {
+      final boundary =
+          _boundaryKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
+      final image = await boundary?.toImage(pixelRatio: 2);
+      final data = await image?.toByteData(format: ui.ImageByteFormat.png);
+      final bytes = data?.buffer.asUint8List();
+      if (!mounted) return;
+      if (bytes == null || bytes.isEmpty) {
+        AppToast.show(context, '裁剪失败');
+        setState(() => _saving = false);
+        return;
+      }
+      context.pop('data:image/png;base64,${base64Encode(bytes)}');
+    } catch (error) {
+      if (!mounted) return;
+      AppToast.show(context, error.toString());
+      setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          onPressed: () => context.pop(),
+          icon: const Icon(Icons.chevron_left, size: 34),
+        ),
+        title: const Text('裁剪头像'),
+        actions: [
+          TextButton(
+            onPressed: _saving ? null : _confirm,
+            child: const Text('确定', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          Center(
+            child: RepaintBoundary(
+              key: _boundaryKey,
+              child: Container(
+                width: 300,
+                height: 300,
+                color: Colors.black,
+                child: ClipRect(
+                  child: InteractiveViewer(
+                    minScale: 1,
+                    maxScale: 5,
+                    boundaryMargin: const EdgeInsets.all(120),
+                    child: Image.file(
+                      File(_path),
+                      width: 300,
+                      height: 300,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 24,
+            right: 24,
+            bottom: 38 + MediaQuery.paddingOf(context).bottom,
+            child: OutlinedButton.icon(
+              onPressed: _saving ? null : _replaceImage,
+              icon: const Icon(Icons.swap_horiz),
+              label: const Text('重新选择'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white54),
+              ),
+            ),
+          ),
+          if (_saving) const _LoadingOverlay(),
         ],
       ),
     );
@@ -652,9 +823,11 @@ class _ScanCodePageState extends ConsumerState<ScanCodePage>
       }
       if (!mounted) return;
       if (envelope.data == true) {
-        context.go('/member-consumption?shopId=${Uri.encodeComponent(shopId)}');
+        context.replace(
+          '/member-consumption?shopId=${Uri.encodeComponent(shopId)}',
+        );
       } else {
-        context.go(
+        context.replace(
           '/create-member?shopId=${Uri.encodeComponent(shopId)}&from=user',
         );
       }
@@ -669,7 +842,7 @@ class _ScanCodePageState extends ConsumerState<ScanCodePage>
     switch (parsed.type) {
       case ScanCodeType.pay:
         if (!mounted) return;
-        context.go(
+        context.replace(
           Uri(
             path: '/member-shop-pay',
             queryParameters: {
@@ -725,7 +898,7 @@ class _ScanCodePageState extends ConsumerState<ScanCodePage>
         _toast('当前账号已经是会员，请勿重复添加');
         await _resume();
       } else {
-        context.go(
+        context.replace(
           Uri(
             path: '/create-member',
             queryParameters: {
@@ -770,6 +943,7 @@ class _ScanCodePageState extends ConsumerState<ScanCodePage>
       final envelope = ApiEnvelope.parse<void>(raw, (_) {});
       if (!mounted) return;
       setState(() {
+        _handling = false;
         _writeOffLoading = false;
         _writeOffSuccess = envelope.isSuccess;
         _writeOffFail = !envelope.isSuccess;
@@ -779,6 +953,7 @@ class _ScanCodePageState extends ConsumerState<ScanCodePage>
     } catch (error) {
       if (!mounted) return;
       setState(() {
+        _handling = false;
         _writeOffLoading = false;
         _writeOffSuccess = false;
         _writeOffFail = true;
@@ -856,7 +1031,7 @@ class _ScanCodePageState extends ConsumerState<ScanCodePage>
               ),
             ),
           ),
-          if (_handling)
+          if (_handling && !_writeOffVisible)
             const Positioned.fill(
               child: ColoredBox(
                 color: Color(0x66000000),
@@ -865,53 +1040,6 @@ class _ScanCodePageState extends ConsumerState<ScanCodePage>
                 ),
               ),
             ),
-        ],
-      ),
-    );
-  }
-}
-
-class ScanTargetPlaceholderPage extends StatelessWidget {
-  const ScanTargetPlaceholderPage({
-    required this.title,
-    required this.sourcePage,
-    required this.params,
-    super.key,
-  });
-
-  final String title;
-  final String sourcePage;
-  final Map<String, String> params;
-
-  @override
-  Widget build(BuildContext context) {
-    return _ProfileScaffold(
-      title: title,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _ShadowPanel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '待迁移',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.brand,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(sourcePage),
-                if (params.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  for (final entry in params.entries)
-                    Text('${entry.key}: ${entry.value}'),
-                ],
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -1146,6 +1274,16 @@ class _PurchasedCouponsPageState extends ConsumerState<PurchasedCouponsPage> {
                             item: _items[index],
                             index: index,
                             status: _tab,
+                            onTap: () => context.push(
+                              Uri(
+                                path: '/coupon-order-detail',
+                                queryParameters: {
+                                  'type': '2',
+                                  'status': _tab.toString(),
+                                  'orderId': _items[index].orderMgmtId,
+                                },
+                              ).toString(),
+                            ),
                           );
                         },
                       ),
@@ -1387,7 +1525,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           if (_user?.isManager == true)
             _SettingGroup(
               children: [
-                _SettingRow(title: '设置支付密码', onTap: () => _toast('设置支付密码待迁移')),
+                _SettingRow(
+                  title: '设置支付密码',
+                  onTap: () => context.push('/set-pay-password'),
+                ),
               ],
             ),
           _SettingGroup(
@@ -1604,6 +1745,82 @@ class _ServicePageState extends ConsumerState<ServicePage> {
           ),
           const SizedBox(height: 40),
           _BottomGradientButton(text: '完成', onTap: _submit),
+        ],
+      ),
+    );
+  }
+}
+
+class SetPayPasswordPage extends ConsumerStatefulWidget {
+  const SetPayPasswordPage({super.key});
+
+  @override
+  ConsumerState<SetPayPasswordPage> createState() => _SetPayPasswordPageState();
+}
+
+class _SetPayPasswordPageState extends ConsumerState<SetPayPasswordPage> {
+  final _controller = TextEditingController();
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _toast(String message) {
+    AppToast.show(context, message);
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    final password = _controller.text.trim();
+    if (password.length != 4) {
+      _toast('请输入密码');
+      return;
+    }
+    setState(() => _submitting = true);
+    try {
+      final raw = await ref
+          .read(apiClientProvider)
+          .post(
+            TuanTuanEndpoints.setPayPassword,
+            data: {'payPassword': password},
+          );
+      final envelope = ApiEnvelope.parse<Map<String, dynamic>>(
+        raw,
+        (data) => data is Map ? Map<String, dynamic>.from(data) : {},
+      );
+      final returnCode = envelope.data?['returnCode']?.toString();
+      if (envelope.isSuccess && returnCode == '0') {
+        _toast('密码设置成功');
+        if (mounted) context.pop();
+      } else {
+        _toast(envelope.message ?? '密码设置失败');
+      }
+    } catch (error) {
+      _toast(error.toString());
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _ProfileScaffold(
+      title: '设置支付密码',
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(32, 44, 32, 120),
+        children: [
+          _PinInput(
+            controller: _controller,
+            onCompleted: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 40),
+          _BottomGradientButton(
+            text: _submitting ? '确认中...' : '确认',
+            onTap: _submitting ? null : _submit,
+          ),
         ],
       ),
     );
@@ -1933,11 +2150,13 @@ class _PurchasedCouponCard extends StatelessWidget {
     required this.item,
     required this.index,
     required this.status,
+    required this.onTap,
   });
 
   final PurchasedCoupon item;
   final int index;
   final int status;
+  final VoidCallback onTap;
 
   static const _colors = [
     [Color(0xFFFF4252), Color(0xFFFF7396)],
@@ -1954,175 +2173,178 @@ class _PurchasedCouponCard extends StatelessWidget {
         ? _colors[index % _colors.length]
         : const [Color(0xFF909090), Color(0xFFB5B5B5)];
     final disabled = status != 0;
-    return Container(
-      height: 151,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: pair,
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      clipBehavior: Clip.hardEdge,
-      child: Stack(
-        children: [
-          Positioned(
-            right: -50,
-            bottom: -35,
-            width: 225,
-            height: 225,
-            child: Opacity(
-              opacity: .2,
-              child: Image.asset('assets/static/image/hot-logo.png'),
-            ),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 151,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: pair,
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Column(
-              children: [
-                SizedBox(
-                  height: 60,
-                  child: Row(
-                    children: [
-                      _CircleNetImage(url: item.logoImageUrl, size: 40),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          item.shopName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        clipBehavior: Clip.hardEdge,
+        child: Stack(
+          children: [
+            Positioned(
+              right: -50,
+              bottom: -35,
+              width: 225,
+              height: 225,
+              child: Opacity(
+                opacity: .2,
+                child: Image.asset('assets/static/image/hot-logo.png'),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Column(
+                children: [
+                  SizedBox(
+                    height: 60,
+                    child: Row(
+                      children: [
+                        _CircleNetImage(url: item.logoImageUrl, size: 40),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            item.shopName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          item.categoryName,
                           style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
                             color: Colors.white,
                           ),
                         ),
-                      ),
-                      Text(
-                        item.categoryName,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      image: const DecorationImage(
-                        image: AssetImage(
-                          'assets/static/yhj-bg-one_compressed.png',
-                        ),
-                        fit: BoxFit.cover,
-                      ),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Stack(
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 65,
-                              child: Row(
-                                children: [
-                                  const SizedBox(width: 8),
-                                  _NetImage(url: item.couponImage, size: 52),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          item.couponName,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        Row(
-                                          children: [
-                                            Text(
-                                              '￥${item.couponPrice}',
-                                              style: const TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w600,
-                                                color: AppTheme.brand,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              '￥${item.oriPrice}',
-                                              style: const TextStyle(
-                                                fontSize: 14,
-                                                color: Color(0xFF999999),
-                                                decoration:
-                                                    TextDecoration.lineThrough,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        Text(
-                                          '${item.validPeriod}到期',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: AppTheme.textSecondary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              height: 58,
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  left: BorderSide(
-                                    color: disabled
-                                        ? const Color(0xFF666666)
-                                        : pair.first,
-                                    style: BorderStyle.solid,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 35,
-                              child: _DiscountNumber(
-                                rate: item.discountRate,
-                                color: disabled
-                                    ? const Color(0xFF666666)
-                                    : AppTheme.brandEnd,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (disabled)
-                          Positioned(
-                            right: 8,
-                            bottom: 8,
-                            child: _UsedStamp(
-                              text: status == 1 ? '已使用' : '已过期',
-                            ),
-                          ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-              ],
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        image: const DecorationImage(
+                          image: AssetImage(
+                            'assets/static/yhj-bg-one_compressed.png',
+                          ),
+                          fit: BoxFit.cover,
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Stack(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                flex: 65,
+                                child: Row(
+                                  children: [
+                                    const SizedBox(width: 8),
+                                    _NetImage(url: item.couponImage, size: 52),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            item.couponName,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          Row(
+                                            children: [
+                                              Text(
+                                                '￥${item.couponPrice}',
+                                                style: const TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppTheme.brand,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                '￥${item.oriPrice}',
+                                                style: const TextStyle(
+                                                  fontSize: 14,
+                                                  color: Color(0xFF999999),
+                                                  decoration: TextDecoration
+                                                      .lineThrough,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          Text(
+                                            '${item.validPeriod}到期',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: AppTheme.textSecondary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                height: 58,
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    left: BorderSide(
+                                      color: disabled
+                                          ? const Color(0xFF666666)
+                                          : pair.first,
+                                      style: BorderStyle.solid,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 35,
+                                child: _DiscountNumber(
+                                  rate: item.discountRate,
+                                  color: disabled
+                                      ? const Color(0xFF666666)
+                                      : AppTheme.brandEnd,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (disabled)
+                            Positioned(
+                              right: 8,
+                              bottom: 8,
+                              child: _UsedStamp(
+                                text: status == 1 ? '已使用' : '已过期',
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2284,6 +2506,50 @@ class _SettingRow extends StatelessWidget {
   }
 }
 
+class _PinInput extends StatelessWidget {
+  const _PinInput({required this.controller, this.onCompleted});
+
+  final TextEditingController controller;
+  final ValueChanged<String>? onCompleted;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      obscureText: true,
+      textAlign: TextAlign.center,
+      maxLength: 4,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      style: const TextStyle(
+        fontSize: 28,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 14,
+      ),
+      decoration: InputDecoration(
+        counterText: '',
+        hintText: '请输入4位支付密码',
+        hintStyle: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w400,
+          letterSpacing: 0,
+          color: Color(0xFFBBBBBB),
+        ),
+        filled: true,
+        fillColor: const Color(0xFFF7F7F7),
+        contentPadding: const EdgeInsets.symmetric(vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(28),
+          borderSide: BorderSide.none,
+        ),
+      ),
+      onChanged: (value) {
+        if (value.length == 4) onCompleted?.call(value);
+      },
+    );
+  }
+}
+
 class _UpdateDialog extends StatelessWidget {
   const _UpdateDialog({required this.data});
 
@@ -2397,11 +2663,10 @@ class _NetImage extends StatelessWidget {
         height: size,
         child: url.isEmpty
             ? Container(color: const Color(0xFFF1F1F1))
-            : Image.network(
-                url,
+            : AppCachedNetworkImage(
+                imageUrl: url,
                 fit: BoxFit.cover,
-                errorBuilder: (_, _, _) =>
-                    Container(color: const Color(0xFFF1F1F1)),
+                errorWidget: Container(color: const Color(0xFFF1F1F1)),
               ),
       ),
     );
@@ -2422,7 +2687,7 @@ class _CircleNetImage extends StatelessWidget {
         height: size,
         child: url.isEmpty
             ? Container(color: const Color(0x33FFFFFF))
-            : Image.network(url, fit: BoxFit.cover),
+            : AppCachedNetworkImage(imageUrl: url, fit: BoxFit.cover),
       ),
     );
   }
@@ -2441,11 +2706,13 @@ class _MemberAvatar extends StatelessWidget {
         height: 35,
         child: url.isEmpty
             ? Image.asset('assets/static/tx.png', fit: BoxFit.cover)
-            : Image.network(
-                url,
+            : AppCachedNetworkImage(
+                imageUrl: url,
                 fit: BoxFit.cover,
-                errorBuilder: (_, _, _) =>
-                    Image.asset('assets/static/tx.png', fit: BoxFit.cover),
+                errorWidget: Image.asset(
+                  'assets/static/tx.png',
+                  fit: BoxFit.cover,
+                ),
               ),
       ),
     );

@@ -7,6 +7,7 @@ import '../../../app/theme/app_theme.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/storage/app_storage.dart';
 import '../../../core/ui/app_toast.dart';
+import '../../../shared/widgets/cached_image.dart';
 import '../data/home_models.dart';
 import '../data/home_repository.dart';
 
@@ -185,8 +186,6 @@ class _ShopDetailPageState extends ConsumerState<ShopDetailPage> {
     AppToast.show(context, message);
   }
 
-  void _pending(String name) => _toast('$name待迁移');
-
   @override
   Widget build(BuildContext context) {
     final shop = _shop;
@@ -201,7 +200,7 @@ class _ShopDetailPageState extends ConsumerState<ShopDetailPage> {
           else
             _buildContent(shop),
           Positioned(
-            top: 40,
+            top: MediaQuery.paddingOf(context).top + 12,
             left: 16,
             child: _CircleButton(
               icon: Icons.chevron_left,
@@ -215,7 +214,12 @@ class _ShopDetailPageState extends ConsumerState<ShopDetailPage> {
           : _BottomActions(
               isFav: shop.isFav,
               onFav: _toggleFav,
-              onScore: () => _pending('评分页'),
+              onScore: () => context.push(
+                Uri(
+                  path: '/rating',
+                  queryParameters: {'shopId': shop.shopId, 'name': shop.name},
+                ).toString(),
+              ),
             ),
     );
   }
@@ -276,7 +280,6 @@ class _ShopHeader extends StatelessWidget {
     required this.onPhone,
   });
 
-  static const _heroHeight = 250.0;
   static const _overlap = 35.0;
 
   final ShopDetail shop;
@@ -288,6 +291,9 @@ class _ShopHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final safeTop = MediaQuery.paddingOf(context).top;
+    final imageHeight = MediaQuery.sizeOf(context).width * 500 / 750;
+    final heroHeight = safeTop + imageHeight;
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -296,11 +302,12 @@ class _ShopHeader extends StatelessWidget {
           controller: controller,
           imageIndex: imageIndex,
           onPageChanged: onPageChanged,
-          height: _heroHeight,
+          topPadding: safeTop,
+          height: heroHeight,
           indicatorBottom: _overlap + 18,
         ),
         Padding(
-          padding: const EdgeInsets.only(top: _heroHeight - _overlap),
+          padding: EdgeInsets.only(top: heroHeight - _overlap),
           child: _ShopInfoCard(shop: shop, onMap: onMap, onPhone: onPhone),
         ),
       ],
@@ -314,6 +321,7 @@ class _HeroImages extends StatelessWidget {
     required this.controller,
     required this.imageIndex,
     required this.onPageChanged,
+    required this.topPadding,
     required this.height,
     required this.indicatorBottom,
   });
@@ -322,6 +330,7 @@ class _HeroImages extends StatelessWidget {
   final PageController controller;
   final int imageIndex;
   final ValueChanged<int> onPageChanged;
+  final double topPadding;
   final double height;
   final double indicatorBottom;
 
@@ -333,31 +342,37 @@ class _HeroImages extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (images.isEmpty)
-            Container(
-              color: const Color(0xFFEFEFEF),
-              child: const Icon(Icons.storefront, size: 56, color: Colors.grey),
-            )
-          else
-            PageView.builder(
-              controller: controller,
-              onPageChanged: onPageChanged,
-              itemCount: images.length,
-              itemBuilder: (context, index) {
-                return Image.network(
-                  images[index],
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => Container(
+          Positioned.fill(
+            top: topPadding,
+            child: images.isEmpty
+                ? Container(
                     color: const Color(0xFFEFEFEF),
                     child: const Icon(
                       Icons.storefront,
                       size: 56,
                       color: Colors.grey,
                     ),
+                  )
+                : PageView.builder(
+                    controller: controller,
+                    onPageChanged: onPageChanged,
+                    itemCount: images.length,
+                    itemBuilder: (context, index) {
+                      return AppCachedNetworkImage(
+                        imageUrl: images[index],
+                        fit: BoxFit.fill,
+                        errorWidget: Container(
+                          color: const Color(0xFFEFEFEF),
+                          child: const Icon(
+                            Icons.storefront,
+                            size: 56,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
+          ),
           if (images.length > 1)
             Positioned(
               right: 16,
@@ -618,11 +633,10 @@ class _CouponCard extends StatelessWidget {
               height: 72,
               child: coupon.imageUrl.isEmpty
                   ? Container(color: const Color(0xFFF0F0F0))
-                  : Image.network(
-                      coupon.imageUrl,
+                  : AppCachedNetworkImage(
+                      imageUrl: coupon.imageUrl,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-                          Container(color: const Color(0xFFF0F0F0)),
+                      errorWidget: Container(color: const Color(0xFFF0F0F0)),
                     ),
             ),
           ),
@@ -748,10 +762,10 @@ class _MenuCarouselState extends State<_MenuCarousel> {
                   child: Container(
                     color: Colors.white,
                     alignment: Alignment.center,
-                    child: Image.network(
-                      image,
+                    child: AppCachedNetworkImage(
+                      imageUrl: image,
                       fit: BoxFit.contain,
-                      errorBuilder: (_, _, _) => Container(
+                      errorWidget: Container(
                         color: const Color(0xFFF0F0F0),
                         alignment: Alignment.center,
                         child: const Icon(
@@ -795,10 +809,10 @@ class _MenuCarouselState extends State<_MenuCarousel> {
             color: Colors.black,
             child: InteractiveViewer(
               child: Center(
-                child: Image.network(
-                  image,
+                child: AppCachedNetworkImage(
+                  imageUrl: image,
                   fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => const Icon(
+                  errorWidget: const Icon(
                     Icons.image_not_supported_outlined,
                     color: Colors.white,
                   ),

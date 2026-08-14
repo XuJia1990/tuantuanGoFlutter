@@ -8,6 +8,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/payment/wechat_pay_service.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
 import '../../../core/ui/app_toast.dart';
+import '../../../shared/widgets/cached_image.dart';
 import '../data/home_models.dart';
 
 class SubmitOrderPage extends ConsumerStatefulWidget {
@@ -173,7 +174,7 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
           _payLoading = false;
           _payFailed = false;
         });
-        context.go(
+        context.push(
           Uri(
             path: '/coupon-order-detail',
             queryParameters: {
@@ -366,11 +367,12 @@ class _OrderCouponCard extends StatelessWidget {
                     height: 54,
                     child: coupon.imageUrl.isEmpty
                         ? Container(color: const Color(0xFFF5F5F5))
-                        : Image.network(
-                            coupon.imageUrl,
+                        : AppCachedNetworkImage(
+                            imageUrl: coupon.imageUrl,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) =>
-                                Container(color: const Color(0xFFF5F5F5)),
+                            errorWidget: Container(
+                              color: const Color(0xFFF5F5F5),
+                            ),
                           ),
                   ),
                 ),

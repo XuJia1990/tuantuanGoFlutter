@@ -3,8 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/tuantuan_endpoints.dart';
+import '../../../core/storage/app_storage.dart';
 import '../data/home_models.dart';
 import '../data/home_repository.dart';
 import 'shop_summary_card.dart';
@@ -31,17 +36,66 @@ class _HomePageState extends ConsumerState<HomePage> {
   String _typeCondition = '';
   String _sortTitle = '综合排序';
   String _typeTitle = '全部美食';
+  bool _ignoreUpdateThisSession = false;
 
   @override
   void initState() {
     super.initState();
-    _bootstrap();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _start());
   }
 
   @override
   void dispose() {
     _pageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _start() async {
+    final canContinue = await _checkVersionOnStart();
+    if (!mounted || !canContinue) return;
+    await _bootstrap();
+    if (!mounted) return;
+    await _maybeShowSplashAd();
+  }
+
+  Future<bool> _checkVersionOnStart() async {
+    if (_ignoreUpdateThisSession) return true;
+    final platform = Theme.of(context).platform.name;
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final raw = await ref
+          .read(apiClientProvider)
+          .get(
+            TuanTuanEndpoints.version,
+            query: {'systemType': platform, 'versionNum': packageInfo.version},
+          );
+      final envelope = ApiEnvelope.parse<Map<String, dynamic>>(
+        raw,
+        (data) => data is Map ? Map<String, dynamic>.from(data) : {},
+      );
+      final data = envelope.data;
+      final latest = data?['versionNum']?.toString() ?? '';
+      if (!envelope.isSuccess || data == null || latest.isEmpty) return true;
+      if (latest == packageInfo.version) return true;
+      if (!mounted) return false;
+      final force = data['forceUpdateFlg'] == true;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => _HomeUpdateDialog(
+          data: data,
+          onIgnore: force
+              ? null
+              : () {
+                  _ignoreUpdateThisSession = true;
+                  Navigator.of(context).pop();
+                },
+        ),
+      );
+      return !force && _ignoreUpdateThisSession;
+    } catch (_) {
+      return true;
+    }
   }
 
   Future<void> _bootstrap() async {
@@ -88,6 +142,30 @@ class _HomePageState extends ConsumerState<HomePage> {
         _isBootstrapping = false;
       });
     }
+  }
+
+  Future<void> _maybeShowSplashAd() async {
+    final storage = ref.read(appStorageProvider);
+    final hasShown = await storage.hasShowSplashAd();
+    if (hasShown || !mounted) return;
+    try {
+      final raw = await ref
+          .read(apiClientProvider)
+          .post(TuanTuanEndpoints.adInfo);
+      final envelope = ApiEnvelope.parse<Map<String, dynamic>>(
+        raw,
+        (data) => data is Map ? Map<String, dynamic>.from(data) : {},
+      );
+      final data = envelope.data;
+      final isShow = data?['isShow'] == true || data?['isShow'] == 1;
+      final adUrl = data?['adUrl']?.toString() ?? '';
+      if (!envelope.isSuccess || !isShow || adUrl.isEmpty || !mounted) return;
+      await storage.saveHasShowSplashAd(true);
+      if (!mounted) return;
+      context.push(
+        Uri(path: '/ad', queryParameters: {'url': adUrl}).toString(),
+      );
+    } catch (_) {}
   }
 
   Future<(double, double)> _resolveLocation() async {
@@ -722,6 +800,122 @@ class _LoadingOverlay extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
           child: Image.asset('assets/static/data.gif'),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeUpdateDialog extends StatelessWidget {
+  const _HomeUpdateDialog({required this.data, required this.onIgnore});
+
+  final Map<String, dynamic> data;
+  final VoidCallback? onIgnore;
+
+  @override
+  Widget build(BuildContext context) {
+    final force = data['forceUpdateFlg'] == true;
+    return PopScope(
+      canPop: false,
+      child: Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 36),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  Image.asset('assets/static/update.png', fit: BoxFit.fitWidth),
+                  Positioned(
+                    bottom: 16,
+                    child: Column(
+                      children: [
+                        Text(
+                          'v${data['versionNum'] ?? ''}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const Text(
+                          '发现新版本',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+                child: Column(
+                  children: [
+                    const Text(
+                      '用户体验全面升级',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 130),
+                      child: SingleChildScrollView(
+                        child: Text(
+                          data['versionContent']?.toString() ?? '',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: AppTheme.textSecondary,
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        if (!force) ...[
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: onIgnore,
+                              child: const Text('暂不体验'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                        ],
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () async {
+                              final url = data['appstoreUrl']?.toString();
+                              final uri = Uri.tryParse(url ?? '');
+                              if (uri != null && uri.hasScheme) {
+                                await launchUrl(
+                                  uri,
+                                  mode: LaunchMode.externalApplication,
+                                );
+                              }
+                            },
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppTheme.brand,
+                            ),
+                            child: const Text('立即体验'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

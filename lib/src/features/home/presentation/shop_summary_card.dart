@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../core/constants/app_assets.dart';
+import '../../../shared/widgets/cached_image.dart';
 import '../data/home_models.dart';
 
 class ShopSummaryCard extends StatelessWidget {
@@ -37,10 +38,10 @@ class ShopSummaryCard extends StatelessWidget {
                           color: Color(0xFFAAAAAA),
                         ),
                       )
-                    : Image.network(
-                        shop.imageUrl,
+                    : AppCachedNetworkImage(
+                        imageUrl: shop.imageUrl,
                         fit: BoxFit.contain,
-                        errorBuilder: (_, _, _) => Container(
+                        errorWidget: Container(
                           color: const Color(0xFFF0F0F0),
                           child: const Icon(
                             Icons.storefront_outlined,
