@@ -5,6 +5,7 @@
 .pub-cache/
 .pub/
 build/
+devtools_options.yaml
 
 android/local.properties
 android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
@@ -39,6 +40,8 @@ ios/Flutter/ephemeral/
 ios/Flutter/flutter_export_environment.sh
 ios/Runner/GeneratedPluginRegistrant.h
 ios/Runner/GeneratedPluginRegistrant.m
+ios/Runner.xcworkspace/xcuserdata/
+ios/Podfile.lock
 
 # Desktop generated files
 linux/
