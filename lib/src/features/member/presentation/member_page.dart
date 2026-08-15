@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -123,51 +125,41 @@ class _MemberPageState extends ConsumerState<MemberPage> {
     _load(reset: false);
   }
 
-  void _toggleShop(MemberCardInfo card, MemberShopInfo shop) {
-    setState(() {
-      if (card.handleShopId == shop.shopId) {
-        card.handleShopId = '';
-        card.handleShopName = '';
-      } else {
-        card.handleShopId = shop.shopId;
-        card.handleShopName = shop.name;
-      }
-    });
-  }
-
   void _goRecharge(MemberCardInfo card) {
-    if (card.handleShopId.isEmpty) {
-      _toast('请点击选择充值店铺');
-      return;
-    }
+    final shops = [
+      for (final shop in card.shopInfoList)
+        {'shopId': shop.shopId, 'name': shop.name, 'imageUrl': shop.imageUrl},
+    ];
     context.push(
       Uri(
         path: '/member-recharge',
         queryParameters: {
           'type': '1',
           'isShopCharge': '0',
-          'shopId': card.handleShopId,
+          'shops': jsonEncode(shops),
         },
       ).toString(),
+      extra: shops,
     );
   }
 
   void _goRecord(MemberCardInfo card) {
-    if (card.handleShopId.isEmpty) {
-      _toast('请点击选择要查看记录的店铺');
-      return;
-    }
+    final shops = [
+      for (final shop in card.shopInfoList)
+        {'shopId': shop.shopId, 'name': shop.name, 'imageUrl': shop.imageUrl},
+    ];
     context.push(
       Uri(
         path: '/member-record',
         queryParameters: {
-          'shopId': card.handleShopId,
           'memberId': card.memberId,
-          'shopName': card.handleShopName,
+          'title': '账单',
+          'shops': jsonEncode(shops),
           'source': 'user',
           'allowRefund': '0',
         },
       ).toString(),
+      extra: shops,
     );
   }
 
@@ -227,7 +219,6 @@ class _MemberPageState extends ConsumerState<MemberPage> {
                           card: _items[index],
                           gradient:
                               _cardGradients[index % _cardGradients.length],
-                          onToggleShop: _toggleShop,
                           onToggleShopList: () {
                             setState(() {
                               _items[index].showShop = !_items[index].showShop;
@@ -251,7 +242,6 @@ class _MemberCard extends StatelessWidget {
   const _MemberCard({
     required this.card,
     required this.gradient,
-    required this.onToggleShop,
     required this.onToggleShopList,
     required this.onRecord,
     required this.onRecharge,
@@ -259,7 +249,6 @@ class _MemberCard extends StatelessWidget {
 
   final MemberCardInfo card;
   final LinearGradient gradient;
-  final void Function(MemberCardInfo card, MemberShopInfo shop) onToggleShop;
   final VoidCallback onToggleShopList;
   final void Function(MemberCardInfo card) onRecord;
   final void Function(MemberCardInfo card) onRecharge;
@@ -336,11 +325,7 @@ class _MemberCard extends StatelessWidget {
                     SizedBox(
                       width: itemWidth,
                       height: 60,
-                      child: _ShopCell(
-                        shop: shop,
-                        selected: shop.shopId == card.handleShopId,
-                        onTap: () => onToggleShop(card, shop),
-                      ),
+                      child: _ShopCell(shop: shop),
                     ),
                 ],
               );
@@ -400,67 +385,54 @@ class _CardActionButton extends StatelessWidget {
 }
 
 class _ShopCell extends StatelessWidget {
-  const _ShopCell({
-    required this.shop,
-    required this.selected,
-    required this.onTap,
-  });
+  const _ShopCell({required this.shop});
 
   final MemberShopInfo shop;
-  final bool selected;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Opacity(
-        opacity: selected ? 0.5 : 1,
-        child: Column(
-          children: [
-            ClipOval(
-              child: SizedBox(
-                width: 35,
-                height: 35,
-                child: shop.imageUrl.isEmpty
-                    ? Container(
-                        color: Colors.white.withValues(alpha: 0.25),
-                        child: const Icon(
-                          Icons.storefront_outlined,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      )
-                    : AppCachedNetworkImage(
-                        imageUrl: shop.imageUrl,
-                        fit: BoxFit.cover,
-                        errorWidget: Container(
-                          color: Colors.white.withValues(alpha: 0.25),
-                          child: const Icon(
-                            Icons.storefront_outlined,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
+    return Column(
+      children: [
+        ClipOval(
+          child: SizedBox(
+            width: 35,
+            height: 35,
+            child: shop.imageUrl.isEmpty
+                ? Container(
+                    color: Colors.white.withValues(alpha: 0.25),
+                    child: const Icon(
+                      Icons.storefront_outlined,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  )
+                : AppCachedNetworkImage(
+                    imageUrl: shop.imageUrl,
+                    fit: BoxFit.cover,
+                    errorWidget: Container(
+                      color: Colors.white.withValues(alpha: 0.25),
+                      child: const Icon(
+                        Icons.storefront_outlined,
+                        color: Colors.white,
+                        size: 20,
                       ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              shop.name.isEmpty ? '--' : shop.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                height: 1.1,
-              ),
-            ),
-          ],
+                    ),
+                  ),
+          ),
         ),
-      ),
+        const SizedBox(height: 4),
+        Text(
+          shop.name.isEmpty ? '--' : shop.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            height: 1.1,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -581,8 +553,6 @@ class MemberCardInfo {
   final String balanceText;
   final List<MemberShopInfo> shopInfoList;
   bool showShop = false;
-  String handleShopId = '';
-  String handleShopName = '';
 
   factory MemberCardInfo.fromJson(Map<String, dynamic> json) {
     final rawShops = json['shopInfoList'];

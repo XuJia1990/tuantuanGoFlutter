@@ -13,7 +13,6 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
@@ -1473,38 +1472,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     if (mounted) context.go('/profile');
   }
 
-  Future<void> _checkVersion() async {
-    try {
-      final raw = await ref
-          .read(apiClientProvider)
-          .get(
-            TuanTuanEndpoints.version,
-            query: {'systemType': Theme.of(context).platform.name},
-          );
-      final envelope = ApiEnvelope.parse<Map<String, dynamic>>(
-        raw,
-        (data) => Map<String, dynamic>.from(data as Map),
-      );
-      final data = envelope.data;
-      if (!envelope.isSuccess || data == null) {
-        _toast(envelope.message ?? '版本检查失败');
-        return;
-      }
-      final latest = data['versionNum']?.toString() ?? '';
-      if (latest == _version || latest.isEmpty) {
-        _toast('当前已是最新版本');
-        return;
-      }
-      if (!mounted) return;
-      showDialog<void>(
-        context: context,
-        builder: (context) => _UpdateDialog(data: data),
-      );
-    } catch (error) {
-      _toast(error.toString());
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return _ProfileScaffold(
@@ -1545,11 +1512,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 title: '法律条款及隐私政策',
                 onTap: () => context.push('/privacy-agreement?type=4'),
               ),
-              _SettingRow(
-                title: '当前版本',
-                value: 'v$_version',
-                onTap: _checkVersion,
-              ),
+              _SettingRow(title: '当前版本', value: 'v$_version'),
               const _SettingRow(title: 'ICP备案号', value: '辽ICP备2024041749号'),
               _SettingRow(title: '注销账号', onTap: _deleteAccount),
             ],
@@ -2546,66 +2509,6 @@ class _PinInput extends StatelessWidget {
       onChanged: (value) {
         if (value.length == 4) onCompleted?.call(value);
       },
-    );
-  }
-}
-
-class _UpdateDialog extends StatelessWidget {
-  const _UpdateDialog({required this.data});
-
-  final Map<String, dynamic> data;
-
-  @override
-  Widget build(BuildContext context) {
-    final force = data['forceUpdateFlg'] == true;
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 36),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Image.asset('assets/static/update.png', fit: BoxFit.fitWidth),
-          Padding(
-            padding: const EdgeInsets.all(15),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('v${data['versionNum'] ?? ''} 发现新版本'),
-                const SizedBox(height: 12),
-                const Text('用户体验全面升级'),
-                const SizedBox(height: 12),
-                Text(data['versionContent']?.toString() ?? ''),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    if (!force)
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: Navigator.of(context).pop,
-                          child: const Text('暂不体验'),
-                        ),
-                      ),
-                    if (!force) const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () async {
-                          final url = data['appstoreUrl']?.toString();
-                          if (url != null && url.isNotEmpty) {
-                            await launchUrl(
-                              Uri.parse(url),
-                              mode: LaunchMode.externalApplication,
-                            );
-                          }
-                        },
-                        child: const Text('立即体验'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

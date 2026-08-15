@@ -10,12 +10,14 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
 import '../../../core/storage/app_storage.dart';
 import '../../../core/ui/app_toast.dart';
+import '../../../shared/widgets/cached_image.dart';
 import '../../home/data/home_models.dart';
 
 class MemberRecordPage extends ConsumerStatefulWidget {
-  const MemberRecordPage({required this.params, super.key});
+  const MemberRecordPage({required this.params, this.extraShops, super.key});
 
   final Map<String, String> params;
+  final Object? extraShops;
 
   @override
   ConsumerState<MemberRecordPage> createState() => _MemberRecordPageState();
@@ -31,17 +33,45 @@ class _MemberRecordPageState extends ConsumerState<MemberRecordPage> {
   bool _loadingMore = false;
   bool _isManager = false;
   String _title = '';
+  String _selectedShopId = '';
+  final _shops = <_RecordShopOption>[];
 
   String get _memberId => widget.params['memberId'] ?? '';
   String get _shopId => widget.params['shopId'] ?? '';
   String get _shopName => widget.params['shopName'] ?? '';
+  String get _pageTitle => widget.params['title'] ?? '';
   bool get _allowRefund => widget.params['allowRefund'] == '1';
 
   @override
   void initState() {
     super.initState();
+    _selectedShopId = _shopId;
+    _shops.addAll(_initialShops());
     _loadUser();
     _load(reset: true);
+  }
+
+  List<_RecordShopOption> _initialShops() {
+    final extraShops = _parseShopList(widget.extraShops);
+    if (extraShops.isNotEmpty) return extraShops;
+    final raw = widget.params['shops'];
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      return _parseShopList(jsonDecode(raw));
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  List<_RecordShopOption> _parseShopList(Object? raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map(
+          (item) => _RecordShopOption.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .where((item) => item.shopId.isNotEmpty)
+        .toList();
   }
 
   Future<void> _loadUser() async {
@@ -60,7 +90,9 @@ class _MemberRecordPageState extends ConsumerState<MemberRecordPage> {
     if (!mounted) return;
     setState(() {
       _isManager = isManager;
-      _title = isManager
+      _title = _pageTitle.isNotEmpty
+          ? _pageTitle
+          : isManager
           ? (_shopName.isNotEmpty ? _shopName : localShopName)
           : _shopName;
     });
@@ -81,17 +113,15 @@ class _MemberRecordPageState extends ConsumerState<MemberRecordPage> {
       });
     }
     try {
+      final data = <String, dynamic>{
+        'pageNo': _pageNo,
+        'pageSize': _pageSize,
+        'memberId': _memberId,
+      };
+      if (_selectedShopId.isNotEmpty) data['shopId'] = _selectedShopId;
       final raw = await ref
           .read(apiClientProvider)
-          .post(
-            TuanTuanEndpoints.memberOrderList,
-            data: {
-              'pageNo': _pageNo,
-              'pageSize': _pageSize,
-              'memberId': _memberId,
-              'shopId': _shopId,
-            },
-          );
+          .post(TuanTuanEndpoints.memberOrderList, data: data);
       final envelope = ApiEnvelope.parse<PagedResult<MemberOrderRecord>>(
         raw,
         (data) => PagedResult.parse(data, MemberOrderRecord.fromJson),
@@ -130,6 +160,21 @@ class _MemberRecordPageState extends ConsumerState<MemberRecordPage> {
     if (notification.metrics.extentAfter > 160) return;
     _pageNo += 1;
     _load(reset: false);
+  }
+
+  Future<void> _selectShopFilter() async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (context) =>
+          _ShopFilterSheet(shops: _shops, selectedShopId: _selectedShopId),
+    );
+    if (selected == null || !mounted || selected == _selectedShopId) return;
+    setState(() => _selectedShopId = selected);
+    await _load(reset: true);
   }
 
   Future<void> _refund(MemberOrderRecord item) async {
@@ -211,49 +256,60 @@ class _MemberRecordPageState extends ConsumerState<MemberRecordPage> {
             child: RefreshIndicator(
               color: AppTheme.brand,
               onRefresh: () => _load(reset: true),
-              child: _items.isEmpty && !_loading
-                  ? const _RecordEmpty()
-                  : ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-                      children: [
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: Column(
-                            children: [
-                              for (
-                                var index = 0;
-                                index < _items.length;
-                                index++
-                              )
-                                _RecordCard(
-                                  item: _items[index],
-                                  showDivider: index != _items.length - 1,
-                                  canRefund:
-                                      _allowRefund &&
-                                      _isManager &&
-                                      _items[index].memberOrderFlg == '消费' &&
-                                      _items[index].useStatus == 1,
-                                  onRefund: () => _refund(_items[index]),
-                                ),
-                            ],
-                          ),
-                        ),
-                        _RecordLoadMore(
-                          loadingMore: _loadingMore,
-                          noMore: _items.length >= _total,
-                        ),
-                      ],
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+                children: [
+                  if (_shops.isNotEmpty)
+                    _ShopFilterBar(
+                      shop: _selectedFilterShop,
+                      onTap: _selectShopFilter,
                     ),
+                  if (_items.isEmpty && !_loading)
+                    const _RecordEmpty()
+                  else ...[
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        children: [
+                          for (var index = 0; index < _items.length; index++)
+                            _RecordCard(
+                              item: _items[index],
+                              showDivider: index != _items.length - 1,
+                              canRefund:
+                                  _allowRefund &&
+                                  _isManager &&
+                                  _items[index].memberOrderFlg == '消费' &&
+                                  _items[index].useStatus == 1,
+                              onRefund: () => _refund(_items[index]),
+                            ),
+                        ],
+                      ),
+                    ),
+                    _RecordLoadMore(
+                      loadingMore: _loadingMore,
+                      noMore: _items.length >= _total,
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
           if (_loading) const _RecordLoading(),
         ],
       ),
+    );
+  }
+
+  _RecordShopOption get _selectedFilterShop {
+    if (_selectedShopId.isEmpty) return _RecordShopOption.all;
+    return _shops.firstWhere(
+      (shop) => shop.shopId == _selectedShopId,
+      orElse: () => _RecordShopOption.all,
     );
   }
 }
@@ -273,6 +329,232 @@ class _RecordCard extends StatefulWidget {
 
   @override
   State<_RecordCard> createState() => _RecordCardState();
+}
+
+class _ShopFilterBar extends StatelessWidget {
+  const _ShopFilterBar({required this.shop, required this.onTap});
+
+  final _RecordShopOption shop;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        height: 58,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            _ShopAvatar(shop: shop, size: 34),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                shop.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ),
+            Container(
+              width: 28,
+              height: 28,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF6F6F6),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.keyboard_arrow_down,
+                color: Color(0xFF555555),
+                size: 22,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShopFilterSheet extends StatelessWidget {
+  const _ShopFilterSheet({required this.shops, required this.selectedShopId});
+
+  final List<_RecordShopOption> shops;
+  final String selectedShopId;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.72,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 38,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE2E2E2),
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 18),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '选择店铺',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    _ShopFilterItem(
+                      shop: _RecordShopOption.all,
+                      selected: selectedShopId.isEmpty,
+                      showDivider: shops.isNotEmpty,
+                      onTap: () => Navigator.of(context).pop(''),
+                    ),
+                    for (var index = 0; index < shops.length; index++)
+                      _ShopFilterItem(
+                        shop: shops[index],
+                        selected: selectedShopId == shops[index].shopId,
+                        showDivider: index != shops.length - 1,
+                        onTap: () =>
+                            Navigator.of(context).pop(shops[index].shopId),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShopFilterItem extends StatelessWidget {
+  const _ShopFilterItem({
+    required this.shop,
+    required this.selected,
+    required this.showDivider,
+    required this.onTap,
+  });
+
+  final _RecordShopOption shop;
+  final bool selected;
+  final bool showDivider;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        child: Column(
+          children: [
+            SizedBox(
+              height: 62,
+              child: Row(
+                children: [
+                  _ShopAvatar(shop: shop, size: 42),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      shop.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  ),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: selected ? AppTheme.brand : Colors.transparent,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: selected
+                            ? AppTheme.brand
+                            : const Color(0xFFD8D8D8),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: selected
+                        ? const Icon(Icons.check, color: Colors.white, size: 19)
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+            if (showDivider)
+              const Divider(height: 1, thickness: 1, color: Color(0xFFEDEDED)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShopAvatar extends StatelessWidget {
+  const _ShopAvatar({required this.shop, required this.size});
+
+  final _RecordShopOption shop;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = Image.asset(AppAssets.logo, fit: BoxFit.cover);
+    return ClipOval(
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: shop.imageUrl.isEmpty
+            ? placeholder
+            : AppCachedNetworkImage(
+                imageUrl: shop.imageUrl,
+                fit: BoxFit.cover,
+                errorWidget: placeholder,
+              ),
+      ),
+    );
+  }
 }
 
 class _RecordCardState extends State<_RecordCard> {
@@ -524,23 +806,21 @@ class _RecordEmpty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      children: [
-        SizedBox(height: MediaQuery.sizeOf(context).height * 0.3),
-        Center(
-          child: Column(
-            children: [
-              Image.asset(AppAssets.empty, width: 100, height: 83),
-              const SizedBox(height: 10),
-              const Text(
-                '这里还什么都没有呢~',
-                style: TextStyle(color: Color(0xFF999999), fontSize: 14),
-              ),
-            ],
-          ),
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.45,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(AppAssets.empty, width: 100, height: 83),
+            const SizedBox(height: 10),
+            const Text(
+              '这里还什么都没有呢~',
+              style: TextStyle(color: Color(0xFF999999), fontSize: 14),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -600,6 +880,28 @@ class _RecordLoading extends StatelessWidget {
           child: Image.asset('assets/static/data.gif'),
         ),
       ),
+    );
+  }
+}
+
+class _RecordShopOption {
+  const _RecordShopOption({
+    required this.shopId,
+    required this.name,
+    required this.imageUrl,
+  });
+
+  static const all = _RecordShopOption(shopId: '', name: '全部店铺', imageUrl: '');
+
+  final String shopId;
+  final String name;
+  final String imageUrl;
+
+  factory _RecordShopOption.fromJson(Map<String, dynamic> json) {
+    return _RecordShopOption(
+      shopId: json['shopId']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      imageUrl: json['imageUrl']?.toString() ?? '',
     );
   }
 }

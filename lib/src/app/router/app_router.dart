@@ -194,13 +194,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/member-recharge',
         builder: (context, state) {
-          return MemberRechargePage(params: state.uri.queryParameters);
+          return MemberRechargePage(
+            params: state.uri.queryParameters,
+            extraShops: state.extra,
+          );
         },
       ),
       GoRoute(
         path: '/member-record',
         builder: (context, state) {
-          return MemberRecordPage(params: state.uri.queryParameters);
+          return MemberRecordPage(
+            params: state.uri.queryParameters,
+            extraShops: state.extra,
+          );
         },
       ),
       GoRoute(

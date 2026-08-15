@@ -18,9 +18,10 @@ import '../../../shared/widgets/cached_image.dart';
 import '../../home/data/home_models.dart';
 
 class MemberRechargePage extends ConsumerStatefulWidget {
-  const MemberRechargePage({required this.params, super.key});
+  const MemberRechargePage({required this.params, this.extraShops, super.key});
 
   final Map<String, String> params;
+  final Object? extraShops;
 
   @override
   ConsumerState<MemberRechargePage> createState() => _MemberRechargePageState();
@@ -33,6 +34,8 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
 
   _MemberUser _user = const _MemberUser.empty();
   _RechargeShop _shop = const _RechargeShop.empty();
+  final _selectableShops = <_RechargeShopOption>[];
+  String _selectedShopId = '';
   final _payList = <_PayCategory>[];
   final _discountTypeList = <_PayCategory>[];
   int _activePayId = 24;
@@ -54,9 +57,12 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
   int get _type => int.tryParse(widget.params['type'] ?? '1') ?? 1;
   int get _isShopCharge =>
       int.tryParse(widget.params['isShopCharge'] ?? '0') ?? 0;
-  String get _shopId => widget.params['shopId'] ?? '';
+  String get _routeShopId => widget.params['shopId'] ?? '';
+  String get _chargeShopId =>
+      _selectedShopId.isNotEmpty ? _selectedShopId : _routeShopId;
   String get _routeUserId => widget.params['userId'] ?? '';
   String get _routeNumber => widget.params['number'] ?? '';
+  bool get _needsShopSelection => _isShopCharge == 0 && _routeShopId.isEmpty;
 
   @override
   void initState() {
@@ -87,9 +93,39 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
 
   Future<void> _loadInitial() async {
     final user = await _loadUser();
+    final extraShops = _parseExtraShops(widget.extraShops);
+    final routeShops = extraShops.isEmpty ? _parseRouteShops() : extraShops;
     if (!mounted) return;
-    setState(() => _user = user);
+    setState(() {
+      _user = user;
+      _selectableShops
+        ..clear()
+        ..addAll(routeShops);
+    });
     await Future.wait([_loadShop(), _loadChargeTypes(), _loadDiscountTypes()]);
+  }
+
+  List<_RechargeShopOption> _parseExtraShops(Object? raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) {
+          final json = Map<String, dynamic>.from(item);
+          return _RechargeShopOption.fromJson(json);
+        })
+        .where((item) => item.shopId.isNotEmpty)
+        .toList();
+  }
+
+  List<_RechargeShopOption> _parseRouteShops() {
+    final raw = widget.params['shops'];
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      return _parseExtraShops(decoded);
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<_MemberUser> _loadUser() async {
@@ -113,10 +149,18 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
       });
       return;
     }
+    if (_needsShopSelection) {
+      if (!mounted) return;
+      setState(() {
+        _shop = const _RechargeShop.empty();
+        _loadingShop = false;
+      });
+      return;
+    }
     try {
       final raw = await ref
           .read(apiClientProvider)
-          .get(TuanTuanEndpoints.shopInfo, query: {'shopId': _shopId});
+          .get(TuanTuanEndpoints.shopInfo, query: {'shopId': _routeShopId});
       final envelope = ApiEnvelope.parse<ShopDetail>(
         raw,
         (data) => ShopDetail.fromJson(Map<String, dynamic>.from(data as Map)),
@@ -211,6 +255,10 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
 
   Future<void> _submit() async {
     if (_submitting) return;
+    if (_isShopCharge == 0 && _chargeShopId.isEmpty) {
+      _toast('请选择充值店铺');
+      return;
+    }
     if (_type == 1) {
       final amount = num.tryParse(_amountController.text);
       if (_amountController.text.isEmpty) {
@@ -286,7 +334,7 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
           ? _amountController.text
           : num.tryParse(_routeNumber) ?? 0,
       'remark': _remark,
-      'chargeShopId': _shopId,
+      'chargeShopId': _chargeShopId,
       'userId': _routeUserId,
       'discountWay': _isShopCharge == 1 ? _selectedDiscountTypeId : '',
     };
@@ -633,7 +681,16 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
         children: [
           _RechargeCard(
             children: [
-              if (_isShopCharge != 1) ...[
+              if (_needsShopSelection) ...[
+                _ShopSelectionList(
+                  shops: _selectableShops,
+                  selectedShopId: _selectedShopId,
+                  onChanged: (shopId) => setState(() {
+                    _selectedShopId = _selectedShopId == shopId ? '' : shopId;
+                  }),
+                ),
+                const Divider(height: 1, color: Color(0xFFF7F7F7)),
+              ] else if (_isShopCharge != 1) ...[
                 _ShopLine(shop: _shop, loading: _loadingShop),
                 const Divider(height: 1, color: Color(0xFFF7F7F7)),
               ],
@@ -901,6 +958,110 @@ class _ShopLine extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ShopSelectionList extends StatelessWidget {
+  const _ShopSelectionList({
+    required this.shops,
+    required this.selectedShopId,
+    required this.onChanged,
+  });
+
+  final List<_RechargeShopOption> shops;
+  final String selectedShopId;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    if (shops.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      children: [
+        const SizedBox(
+          height: 44,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '选择充值店铺',
+              style: TextStyle(fontSize: 16, color: AppTheme.textPrimary),
+            ),
+          ),
+        ),
+        for (var index = 0; index < shops.length; index++) ...[
+          _ShopCheckLine(
+            shop: shops[index],
+            selected: shops[index].shopId == selectedShopId,
+            onTap: () => onChanged(shops[index].shopId),
+          ),
+          if (index != shops.length - 1)
+            const Divider(height: 1, color: Color(0xFFF7F7F7)),
+        ],
+      ],
+    );
+  }
+}
+
+class _ShopCheckLine extends StatelessWidget {
+  const _ShopCheckLine({
+    required this.shop,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _RechargeShopOption shop;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        height: 58,
+        child: Row(
+          children: [
+            Checkbox(
+              value: selected,
+              activeColor: AppTheme.brand,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(3),
+              ),
+              onChanged: (_) => onTap(),
+            ),
+            ClipOval(
+              child: SizedBox(
+                width: 35,
+                height: 35,
+                child: shop.imageUrl.isEmpty
+                    ? Container(
+                        color: const Color(0xFFF0F0F0),
+                        child: const Icon(Icons.storefront_outlined, size: 19),
+                      )
+                    : AppCachedNetworkImage(
+                        imageUrl: shop.imageUrl,
+                        fit: BoxFit.cover,
+                      ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                shop.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1545,6 +1706,26 @@ class _RechargeShop {
 
   final String name;
   final String avatar;
+}
+
+class _RechargeShopOption {
+  const _RechargeShopOption({
+    required this.shopId,
+    required this.name,
+    required this.imageUrl,
+  });
+
+  final String shopId;
+  final String name;
+  final String imageUrl;
+
+  factory _RechargeShopOption.fromJson(Map<String, dynamic> json) {
+    return _RechargeShopOption(
+      shopId: json['shopId']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      imageUrl: json['imageUrl']?.toString() ?? '',
+    );
+  }
 }
 
 class _PayCategory {
