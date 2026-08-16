@@ -1219,14 +1219,14 @@ String? _normalizeMobile(
     return null;
   }
   if (region == _Region.japan) return '+81${mobile.substring(1)}';
-  return '+86$mobile';
+  return mobile;
 }
 
 String _normalizeSubmittedMobile(String raw) {
   final mobile = raw.trim();
   if (mobile.startsWith('+')) return mobile;
   if (_isJapaneseMobile(mobile)) return '+81${mobile.substring(1)}';
-  return '+86$mobile';
+  return mobile;
 }
 
 bool _isJapaneseMobile(String mobile) {
