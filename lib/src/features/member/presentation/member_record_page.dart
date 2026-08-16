@@ -183,7 +183,28 @@ class _MemberRecordPageState extends ConsumerState<MemberRecordPage> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('您确认退款吗?', textAlign: TextAlign.center),
+        title: const Text('确认退款', textAlign: TextAlign.center),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '确定要对这笔消费进行退款吗？退款成功后，金额将退回会员卡余额。',
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.5,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 14),
+            _RefundConfirmLine(
+              label: '退款金额',
+              value: item.money.isEmpty ? '0' : item.money,
+            ),
+            if (item.shopDisplayName.isNotEmpty)
+              _RefundConfirmLine(label: '店铺', value: item.shopDisplayName),
+          ],
+        ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
           OutlinedButton(
@@ -200,7 +221,7 @@ class _MemberRecordPageState extends ConsumerState<MemberRecordPage> {
               backgroundColor: AppTheme.brand,
               foregroundColor: Colors.white,
             ),
-            child: const Text('确认退款'),
+            child: const Text('确定'),
           ),
         ],
       ),
@@ -278,6 +299,7 @@ class _MemberRecordPageState extends ConsumerState<MemberRecordPage> {
                         children: [
                           for (var index = 0; index < _items.length; index++)
                             _RecordCard(
+                              key: ValueKey(_items[index].identityKey),
                               item: _items[index],
                               showDivider: index != _items.length - 1,
                               canRefund:
@@ -316,6 +338,7 @@ class _MemberRecordPageState extends ConsumerState<MemberRecordPage> {
 
 class _RecordCard extends StatefulWidget {
   const _RecordCard({
+    super.key,
     required this.item,
     required this.showDivider,
     required this.canRefund,
@@ -532,6 +555,40 @@ class _ShopFilterItem extends StatelessWidget {
   }
 }
 
+class _RefundConfirmLine extends StatelessWidget {
+  const _RefundConfirmLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$label：',
+            style: const TextStyle(fontSize: 13, color: Color(0xFF999999)),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppTheme.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ShopAvatar extends StatelessWidget {
   const _ShopAvatar({required this.shop, required this.size});
 
@@ -561,6 +618,16 @@ class _RecordCardState extends State<_RecordCard> {
   static const _revealWidth = 78.0;
   double _offset = 0;
 
+  @override
+  void didUpdateWidget(covariant _RecordCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final changedRecord = oldWidget.item.identityKey != widget.item.identityKey;
+    final disabledRefund = oldWidget.canRefund && !widget.canRefund;
+    if ((changedRecord || disabledRefund) && _offset != 0) {
+      _offset = 0;
+    }
+  }
+
   void _onDragUpdate(DragUpdateDetails details) {
     if (!widget.canRefund) return;
     setState(() {
@@ -573,6 +640,11 @@ class _RecordCardState extends State<_RecordCard> {
     setState(() {
       _offset = _offset > _revealWidth / 2 ? _revealWidth : 0;
     });
+  }
+
+  void _handleRefundTap() {
+    if (_offset != 0) setState(() => _offset = 0);
+    widget.onRefund();
   }
 
   @override
@@ -589,7 +661,7 @@ class _RecordCardState extends State<_RecordCard> {
                 child: Align(
                   alignment: Alignment.centerRight,
                   child: GestureDetector(
-                    onTap: widget.onRefund,
+                    onTap: _handleRefundTap,
                     child: Container(
                       width: _revealWidth,
                       color: const Color(0xFFEE1616),
@@ -938,6 +1010,11 @@ class MemberOrderRecord {
   final String useShopName;
   final String refundShopName;
   final String remark;
+
+  String get identityKey {
+    if (memberOrderId.isNotEmpty) return '$memberOrderId-$memberOrderFlg';
+    return '$memberOrderFlg-$memberOrderDatetime-$money-$balance';
+  }
 
   String get badgeText {
     if (memberOrderFlg == '消费') return '消';
