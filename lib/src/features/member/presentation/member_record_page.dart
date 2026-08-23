@@ -182,6 +182,7 @@ class _MemberRecordPageState extends ConsumerState<MemberRecordPage> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('确认退款', textAlign: TextAlign.center),
         content: Column(
