@@ -9,7 +9,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
-import '../../../core/storage/app_storage.dart';
 import '../data/home_models.dart';
 import '../data/home_repository.dart';
 import 'shop_summary_card.dart';
@@ -53,9 +52,9 @@ class _HomePageState extends ConsumerState<HomePage> {
   Future<void> _start() async {
     final canContinue = await _checkVersionOnStart();
     if (!mounted || !canContinue) return;
-    await _bootstrap();
-    if (!mounted) return;
     await _maybeShowSplashAd();
+    if (!mounted) return;
+    await _bootstrap();
   }
 
   Future<bool> _checkVersionOnStart() async {
@@ -145,9 +144,6 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Future<void> _maybeShowSplashAd() async {
-    final storage = ref.read(appStorageProvider);
-    final hasShown = await storage.hasShowSplashAd();
-    if (hasShown || !mounted) return;
     try {
       final raw = await ref
           .read(apiClientProvider)
@@ -160,8 +156,6 @@ class _HomePageState extends ConsumerState<HomePage> {
       final isShow = data?['isShow'] == true || data?['isShow'] == 1;
       final adUrl = data?['adUrl']?.toString() ?? '';
       if (!envelope.isSuccess || !isShow || adUrl.isEmpty || !mounted) return;
-      await storage.saveHasShowSplashAd(true);
-      if (!mounted) return;
       context.push(
         Uri(path: '/ad', queryParameters: {'url': adUrl}).toString(),
       );
@@ -815,38 +809,68 @@ class _HomeUpdateDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final force = data['forceUpdateFlg'] == true;
+    final version = data['versionNum']?.toString() ?? '';
+    final content = data['versionContent']?.toString() ?? '';
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final dialogWidth = (screenWidth - 88).clamp(300.0, 360.0);
+    final imageHeight = dialogWidth * 142 / 300;
     return PopScope(
       canPop: false,
       child: Dialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 36),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+        insetPadding: EdgeInsets.zero,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: SizedBox(
+          width: dialogWidth,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Stack(
-                alignment: Alignment.center,
+                clipBehavior: Clip.none,
                 children: [
-                  Image.asset('assets/static/update.png', fit: BoxFit.fitWidth),
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(12),
+                    ),
+                    child: Image.asset(
+                      'assets/static/update.png',
+                      width: dialogWidth,
+                      height: imageHeight,
+                      fit: BoxFit.fill,
+                    ),
+                  ),
                   Positioned(
-                    bottom: 16,
+                    left: dialogWidth * 0.2 - 42,
+                    top: imageHeight * 0.42,
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'v${data['versionNum'] ?? ''}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: Text(
+                            'v$version',
+                            style: const TextStyle(
+                              color: Color(0xFFFF5A5F),
+                              fontSize: 11,
+                              height: 1.2,
+                            ),
                           ),
                         ),
                         const Text(
                           '发现新版本',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 20,
+                            fontSize: 22,
                             fontWeight: FontWeight.w700,
+                            height: 1.1,
                           ),
                         ),
                       ],
@@ -854,45 +878,58 @@ class _HomeUpdateDialog extends StatelessWidget {
                   ),
                 ],
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+              Container(
+                width: dialogWidth,
+                padding: const EdgeInsets.all(15),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(
+                    bottom: Radius.circular(12),
+                  ),
+                ),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
                       '用户体验全面升级',
                       style: TextStyle(
-                        fontSize: 18,
+                        fontSize: 16,
+                        color: Color(0xFF333333),
                         fontWeight: FontWeight.w700,
+                        height: 1.2,
                       ),
                     ),
                     const SizedBox(height: 12),
                     ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 130),
+                      constraints: const BoxConstraints(maxHeight: 120),
                       child: SingleChildScrollView(
                         child: Text(
-                          data['versionContent']?.toString() ?? '',
+                          content,
                           style: const TextStyle(
                             fontSize: 14,
-                            color: AppTheme.textSecondary,
-                            height: 1.5,
+                            color: Color(0xFF666666),
+                            height: 1.8,
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 24),
                     Row(
                       children: [
                         if (!force) ...[
                           Expanded(
-                            child: OutlinedButton(
+                            child: _UpdateDialogButton(
+                              text: '暂不体验',
+                              primary: false,
                               onPressed: onIgnore,
-                              child: const Text('暂不体验'),
                             ),
                           ),
                           const SizedBox(width: 12),
                         ],
                         Expanded(
-                          child: FilledButton(
+                          child: _UpdateDialogButton(
+                            text: '立即体验',
+                            primary: true,
                             onPressed: () async {
                               final url = data['appstoreUrl']?.toString();
                               final uri = Uri.tryParse(url ?? '');
@@ -903,10 +940,6 @@ class _HomeUpdateDialog extends StatelessWidget {
                                 );
                               }
                             },
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppTheme.brand,
-                            ),
-                            child: const Text('立即体验'),
                           ),
                         ),
                       ],
@@ -917,6 +950,61 @@ class _HomeUpdateDialog extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _UpdateDialogButton extends StatelessWidget {
+  const _UpdateDialogButton({
+    required this.text,
+    required this.primary,
+    required this.onPressed,
+  });
+
+  final String text;
+  final bool primary;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = Container(
+      height: 45,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(23),
+        border: primary ? null : Border.all(color: const Color(0xFFDDDDDD)),
+        gradient: primary
+            ? const LinearGradient(
+                colors: [Color(0xFFFFB86C), Color(0xFFFF5A5F)],
+              )
+            : null,
+        color: primary ? null : Colors.white,
+        boxShadow: primary
+            ? [
+                BoxShadow(
+                  color: const Color(0xFFFF5A5F).withValues(alpha: 0.3),
+                  offset: const Offset(0, 6),
+                  blurRadius: 12,
+                ),
+              ]
+            : null,
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: primary ? Colors.white : const Color(0xFF666666),
+          fontSize: 17,
+          height: 1,
+        ),
+      ),
+    );
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(23),
+        child: child,
       ),
     );
   }

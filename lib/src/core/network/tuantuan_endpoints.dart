@@ -32,6 +32,7 @@ class TuanTuanEndpoints {
   static const shopFavList = '/app-api/go/shop-fav/getShopList';
   static const insertRating = '/app-api/go/shop-rating/insertRatingInfo';
   static const createOrder = '/app-api/go/order-mgmt/create';
+  static const exchangeCodePay = '/app-api/go/order-mgmt/exchange-code-pay';
   static const payInfo = '/app-api/go/order-mgmt/payinfo';
   static const deleteOrder = '/app-api/go/order-mgmt/delete';
   static const payStatus = '/app-api/go/order-mgmt/paystatus';

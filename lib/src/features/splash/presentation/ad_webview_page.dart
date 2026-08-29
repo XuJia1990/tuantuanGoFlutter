@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../../../shared/widgets/cached_image.dart';
+
 class AdWebViewPage extends StatefulWidget {
   const AdWebViewPage({required this.url, super.key});
 
@@ -18,13 +20,23 @@ class _AdWebViewPageState extends State<AdWebViewPage> {
   Timer? _timer;
   int _countDown = 5;
 
+  bool get _isImageAd {
+    final uri = Uri.tryParse(widget.url);
+    final path = (uri?.path ?? widget.url).toLowerCase();
+    return path.endsWith('.jpg') ||
+        path.endsWith('.jpeg') ||
+        path.endsWith('.png') ||
+        path.endsWith('.webp') ||
+        path.endsWith('.gif');
+  }
+
   @override
   void initState() {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted);
     final uri = Uri.tryParse(widget.url);
-    if (uri != null && uri.hasScheme) {
+    if (!_isImageAd && uri != null && uri.hasScheme) {
       _controller.loadRequest(uri);
     }
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -56,15 +68,12 @@ class _AdWebViewPageState extends State<AdWebViewPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       body: Stack(
         children: [
-          Positioned.fill(
-            child: widget.url.isEmpty
-                ? const Center(child: Text('广告地址为空'))
-                : WebViewWidget(controller: _controller),
-          ),
+          Positioned.fill(child: _buildAdContent()),
           Positioned(
-            top: MediaQuery.paddingOf(context).top + 20,
+            top: MediaQuery.paddingOf(context).top + 16,
             right: 20,
             child: GestureDetector(
               onTap: _closeAd,
@@ -97,5 +106,25 @@ class _AdWebViewPageState extends State<AdWebViewPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildAdContent() {
+    if (widget.url.isEmpty) {
+      return const Center(
+        child: Text('广告地址为空', style: TextStyle(color: Colors.white)),
+      );
+    }
+    if (_isImageAd) {
+      return AppCachedNetworkImage(
+        imageUrl: widget.url,
+        width: double.infinity,
+        height: double.infinity,
+        fit: BoxFit.cover,
+        errorWidget: const Center(
+          child: Text('广告加载失败', style: TextStyle(color: Colors.white)),
+        ),
+      );
+    }
+    return WebViewWidget(controller: _controller);
   }
 }

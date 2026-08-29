@@ -429,7 +429,7 @@ class _OrderContent extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const _OrderLine(label: '交易方式', value: '微信支付'),
+                      _OrderLine(label: '交易方式', value: detail.tradeMethodText),
                       _OrderLine(
                         label: '手机号',
                         value: mobile.isEmpty ? '--' : mobile,
@@ -628,6 +628,7 @@ class _CouponOrderDetail {
     required this.oriPrice,
     required this.validPeriod,
     required this.discountRate,
+    required this.tradMethod,
     required this.orderTime,
     required this.payTime,
     required this.writeoffStatus,
@@ -645,9 +646,15 @@ class _CouponOrderDetail {
   final String oriPrice;
   final String validPeriod;
   final int discountRate;
+  final String tradMethod;
   final String orderTime;
   final String payTime;
   final int writeoffStatus;
+
+  String get tradeMethodText {
+    if (tradMethod == '01') return '兑换码支付';
+    return '微信支付';
+  }
 
   factory _CouponOrderDetail.fromJson(Map<String, dynamic> json) {
     final images = json['couponImageUrlList'];
@@ -667,6 +674,7 @@ class _CouponOrderDetail {
       oriPrice: _string(json['oriPrice']),
       validPeriod: _formatDate(json['validPeriod']),
       discountRate: rate <= 1 ? (rate * 100).toInt() : rate.toInt(),
+      tradMethod: _string(json['tradMethod']),
       orderTime: _formatDate(json['orderTime']),
       payTime: json['payTime'] == null ? '' : _formatDate(json['payTime']),
       writeoffStatus: _asInt(json['writeoffStatus']) ?? 0,
@@ -677,13 +685,23 @@ class _CouponOrderDetail {
 String _formatDate(dynamic value) {
   final raw = value?.toString() ?? '';
   if (raw.isEmpty) return '';
+  final timestamp = int.tryParse(raw);
+  if (timestamp != null) {
+    final milliseconds = raw.length >= 13 ? timestamp : timestamp * 1000;
+    return _formatDateTime(
+      DateTime.fromMillisecondsSinceEpoch(milliseconds).toLocal(),
+    );
+  }
   final normalized = raw.contains('T') ? raw : raw.replaceFirst(' ', 'T');
   final date = DateTime.tryParse(normalized);
   if (date == null) return raw;
-  final local = date.toLocal();
+  return _formatDateTime(date.toLocal());
+}
+
+String _formatDateTime(DateTime date) {
   String two(int value) => value.toString().padLeft(2, '0');
-  return '${local.year}-${two(local.month)}-${two(local.day)} '
-      '${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
+  return '${date.year}-${two(date.month)}-${two(date.day)} '
+      '${two(date.hour)}:${two(date.minute)}:${two(date.second)}';
 }
 
 String _mobileFromUserDetail(String? raw) {

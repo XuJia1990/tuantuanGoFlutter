@@ -37,9 +37,13 @@ class _MemberRecordPageState extends ConsumerState<MemberRecordPage> {
   final _shops = <_RecordShopOption>[];
 
   String get _memberId => widget.params['memberId'] ?? '';
+
   String get _shopId => widget.params['shopId'] ?? '';
+
   String get _shopName => widget.params['shopName'] ?? '';
+
   String get _pageTitle => widget.params['title'] ?? '';
+
   bool get _allowRefund => widget.params['allowRefund'] == '1';
 
   @override
@@ -237,10 +241,14 @@ class _MemberRecordPageState extends ConsumerState<MemberRecordPage> {
           );
       final envelope = ApiEnvelope.parse<Map<String, dynamic>>(
         raw,
-        (data) => Map<String, dynamic>.from(data as Map),
+        (data) => data is Map ? Map<String, dynamic>.from(data) : {},
       );
-      if (envelope.isSuccess && envelope.data?['isSecces'] == true) {
+      final refundStatus = _asInt(envelope.data?['refundStatus']);
+      if (envelope.isSuccess && refundStatus == 1) {
         _toast('退款成功');
+        await _load(reset: true);
+      } else if (envelope.isSuccess && refundStatus == 2) {
+        _toast('退款申请已提交，等待审批');
         await _load(reset: true);
       } else {
         _toast('退款失败，${envelope.message ?? ''}');
@@ -306,8 +314,7 @@ class _MemberRecordPageState extends ConsumerState<MemberRecordPage> {
                               canRefund:
                                   _allowRefund &&
                                   _isManager &&
-                                  _items[index].memberOrderFlg == '消费' &&
-                                  _items[index].useStatus == 1,
+                                  _items[index].isConsumption,
                               onRefund: () => _refund(_items[index]),
                             ),
                         ],
@@ -738,7 +745,7 @@ class _RecordCardContent extends StatelessWidget {
                           children: [
                             Flexible(
                               child: Text(
-                                item.memberOrderFlg,
+                                item.statusText,
                                 style: const TextStyle(
                                   fontSize: 16,
                                   color: AppTheme.textPrimary,
@@ -777,7 +784,9 @@ class _RecordCardContent extends StatelessWidget {
                                           style: TextStyle(
                                             fontSize: 12,
                                             height: 1,
-                                            color: item.tipText == '已全额退款'
+                                            color:
+                                                item.tipText == '已全额退款' ||
+                                                    item.tipText == '审批中'
                                                 ? Colors.red
                                                 : const Color(0xFFC1C1C1),
                                           ),
@@ -797,7 +806,7 @@ class _RecordCardContent extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
-                          color: item.memberOrderFlg == '消费'
+                          color: item.isConsumption || item.isApprovalPending
                               ? AppTheme.textPrimary
                               : AppTheme.brand,
                         ),
@@ -830,7 +839,7 @@ class _RecordCardContent extends StatelessWidget {
                     _DetailLine(label: '操作员', value: item.operator),
                   if (item.shopDisplayName.isNotEmpty)
                     _DetailLine(label: '店铺', value: item.shopDisplayName),
-                  if (item.memberOrderFlg != '消费' && item.remark.isNotEmpty)
+                  if (!item.isConsumption && item.remark.isNotEmpty)
                     _DetailLine(label: '备注', value: item.remark),
                 ],
               ),
@@ -987,6 +996,7 @@ class MemberOrderRecord {
     required this.onlineFlag,
     required this.userMobile,
     required this.useStatus,
+    required this.refundStatus,
     required this.money,
     required this.memberOrderDatetime,
     required this.balance,
@@ -1003,6 +1013,7 @@ class MemberOrderRecord {
   final int onlineFlag;
   final String userMobile;
   final int useStatus;
+  final int refundStatus;
   final String money;
   final String memberOrderDatetime;
   final String balance;
@@ -1013,30 +1024,50 @@ class MemberOrderRecord {
   final String remark;
 
   String get identityKey {
-    if (memberOrderId.isNotEmpty) return '$memberOrderId-$memberOrderFlg';
-    return '$memberOrderFlg-$memberOrderDatetime-$money-$balance';
+    if (memberOrderId.isNotEmpty) return '$memberOrderId-$useStatus';
+    return '$useStatus-$memberOrderDatetime-$money-$balance';
+  }
+
+  bool get isRecharge => useStatus == 1;
+
+  bool get isConsumption => useStatus == 2;
+
+  bool get isRefund => useStatus == 3;
+
+  bool get isApprovalPending => useStatus == 4;
+
+  String get statusText {
+    return switch (useStatus) {
+      1 => '充值',
+      2 => '消费',
+      3 => '退款',
+      4 => '审批中',
+      _ => memberOrderFlg,
+    };
   }
 
   String get badgeText {
-    if (memberOrderFlg == '消费') return '消';
-    if (memberOrderFlg == '充值') return '充';
-    if (memberOrderFlg == '退款') return '退';
+    if (isConsumption) return '消';
+    if (isRecharge) return '充';
+    if (isRefund) return '退';
+    if (isApprovalPending) return '审';
     return '';
   }
 
   Color get badgeColor {
-    if (memberOrderFlg == '消费') return const Color(0xFFCCCCCC);
-    if (memberOrderFlg == '充值') return AppTheme.brand;
-    if (memberOrderFlg == '退款') return const Color(0xFF126CFF);
+    if (isConsumption) return const Color(0xFFCCCCCC);
+    if (isRecharge) return AppTheme.brand;
+    if (isRefund) return const Color(0xFF126CFF);
+    if (isApprovalPending) return const Color(0xFFFF4D00);
     return Colors.black;
   }
 
-  String get moneyText => memberOrderFlg == '消费'
+  String get moneyText => isConsumption || isApprovalPending
       ? '-${money.isEmpty ? 0 : money}'
       : '+${money.isEmpty ? 0 : money}';
 
   String get tipText {
-    if (memberOrderFlg == '充值') {
+    if (isRecharge) {
       final name = _paymentName(paymentWay);
       final online = paymentWay == 24
           ? onlineFlag == 1
@@ -1045,16 +1076,14 @@ class MemberOrderRecord {
           : '';
       return '$name$online';
     }
-    if (memberOrderFlg == '退款') {
+    if (isRefund) {
       return '操作人:${userMobile.isEmpty ? '--' : userMobile}';
     }
-    if (memberOrderFlg == '消费' && useStatus == 2) return '已全额退款';
     return '';
   }
 
-  String get paymentIcon => memberOrderFlg == '充值' || memberOrderFlg == '退款'
-      ? _paymentIcon(paymentWay)
-      : '';
+  String get paymentIcon =>
+      isRecharge || isRefund ? _paymentIcon(paymentWay) : '';
 
   String get shopDisplayName => chargeShopName.isNotEmpty
       ? chargeShopName
@@ -1070,6 +1099,7 @@ class MemberOrderRecord {
       onlineFlag: int.tryParse(json['onlineFlag']?.toString() ?? '') ?? 0,
       userMobile: json['userMobile']?.toString() ?? '',
       useStatus: int.tryParse(json['useStatus']?.toString() ?? '') ?? 0,
+      refundStatus: _asInt(json['refundStatus']) ?? 0,
       money: json['money']?.toString() ?? '0',
       memberOrderDatetime: json['memberOrderDatetime']?.toString() ?? '',
       balance: json['balance']?.toString() ?? '0',
@@ -1080,6 +1110,13 @@ class MemberOrderRecord {
       remark: json['remark']?.toString() ?? '',
     );
   }
+}
+
+int? _asInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString());
 }
 
 String _paymentName(int id) {

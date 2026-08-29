@@ -22,6 +22,7 @@ class SubmitOrderPage extends ConsumerStatefulWidget {
 }
 
 class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
+  final _exchangeCodeController = TextEditingController();
   _SubmitCoupon? _coupon;
   FluwxCancelable? _paySubscription;
   String? _payingOrderId;
@@ -30,6 +31,9 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
   bool _payFailed = false;
   String? _error;
   int _payChoose = 1;
+
+  bool get _isExchangeCodePay => _payChoose == 3;
+  String get _bottomTitle => _isExchangeCodePay ? '兑换码支付' : '微信支付';
 
   @override
   void initState() {
@@ -43,6 +47,7 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
   @override
   void dispose() {
     _paySubscription?.cancel();
+    _exchangeCodeController.dispose();
     super.dispose();
   }
 
@@ -71,8 +76,12 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
         });
         return;
       }
+      final coupon = envelope.data!;
       setState(() {
-        _coupon = envelope.data;
+        _coupon = coupon;
+        if (!coupon.supportsExchangeCode && _isExchangeCodePay) {
+          _payChoose = 1;
+        }
         _loading = false;
       });
     } catch (error) {
@@ -86,6 +95,16 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
 
   Future<void> _getPay() async {
     if (_payLoading) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (_isExchangeCodePay && _coupon?.supportsExchangeCode != true) {
+      _showPageToast('当前优惠券不支持兑换码支付');
+      setState(() => _payChoose = 1);
+      return;
+    }
+    if (_isExchangeCodePay && _exchangeCodeController.text.trim().isEmpty) {
+      _showPageToast('请输入兑换码');
+      return;
+    }
     setState(() {
       _payLoading = true;
       _payFailed = false;
@@ -95,12 +114,10 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
 
   Future<void> _createOrder() async {
     try {
+      final data = <String, dynamic>{'couponId': widget.couponId};
       final raw = await ref
           .read(apiClientProvider)
-          .post(
-            TuanTuanEndpoints.createOrder,
-            data: {'couponId': widget.couponId},
-          );
+          .post(TuanTuanEndpoints.createOrder, data: data);
       final envelope = ApiEnvelope.parse<Map<String, dynamic>>(
         raw,
         (data) => Map<String, dynamic>.from(data as Map),
@@ -112,9 +129,61 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
         return;
       }
       _payingOrderId = orderId;
+      if (_isExchangeCodePay) {
+        await _exchangeCodePay(orderId);
+        return;
+      }
       await _getPayInfo(orderId);
     } catch (_) {
       _showPageToast('创建订单失败');
+      if (mounted) setState(() => _payLoading = false);
+    }
+  }
+
+  Future<void> _exchangeCodePay(String orderId) async {
+    try {
+      final raw = await ref
+          .read(apiClientProvider)
+          .post(
+            TuanTuanEndpoints.exchangeCodePay,
+            data: {
+              'orderId': orderId,
+              'couponId': widget.couponId,
+              'exchangeCode': _exchangeCodeController.text.trim(),
+            },
+          );
+      final envelope = ApiEnvelope.parse<Map<String, dynamic>>(
+        raw,
+        (data) => data is Map ? Map<String, dynamic>.from(data) : {},
+      );
+      final paidOrderId =
+          envelope.data?['OrderMgmtId']?.toString().trim().isNotEmpty == true
+          ? envelope.data!['OrderMgmtId'].toString()
+          : orderId;
+      if (!envelope.isSuccess) {
+        _showPageToast(envelope.message ?? '兑换码支付失败');
+        await _deleteOrderSilently(orderId);
+        if (mounted) setState(() => _payLoading = false);
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        _payLoading = false;
+        _payFailed = false;
+      });
+      context.push(
+        Uri(
+          path: '/coupon-order-detail',
+          queryParameters: {
+            'bgc': widget.bgc,
+            'type': '1',
+            'orderId': paidOrderId,
+          },
+        ).toString(),
+      );
+    } catch (_) {
+      _showPageToast('兑换码支付失败');
+      await _deleteOrderSilently(orderId);
       if (mounted) setState(() => _payLoading = false);
     }
   }
@@ -207,6 +276,14 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
     }
   }
 
+  Future<void> _deleteOrderSilently(String orderId) async {
+    try {
+      await ref
+          .read(apiClientProvider)
+          .delete(TuanTuanEndpoints.deleteOrder, data: {'orderId': orderId});
+    } catch (_) {}
+  }
+
   void _rePay() {
     setState(() {
       _payChoose = 1;
@@ -252,13 +329,14 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
           ),
         ),
       ),
-      body: _buildBody(),
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: _buildBody(),
+      ),
       bottomNavigationBar: _loading || _error != null
           ? null
-          : _SubmitBottomBar(
-              title: _payChoose == 1 ? '微信支付' : '支付宝支付',
-              onTap: _getPay,
-            ),
+          : _SubmitBottomBar(title: _bottomTitle, onTap: _getPay),
     );
   }
 
@@ -310,6 +388,8 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
         _PayChooseCard(
           payChoose: _payChoose,
           onChoose: (value) => setState(() => _payChoose = value),
+          exchangeCodeController: _exchangeCodeController,
+          showExchangeCode: coupon.supportsExchangeCode,
         ),
       ],
     );
@@ -433,10 +513,17 @@ class _OrderCouponCard extends StatelessWidget {
 }
 
 class _PayChooseCard extends StatelessWidget {
-  const _PayChooseCard({required this.payChoose, required this.onChoose});
+  const _PayChooseCard({
+    required this.payChoose,
+    required this.onChoose,
+    required this.exchangeCodeController,
+    required this.showExchangeCode,
+  });
 
   final int payChoose;
   final ValueChanged<int> onChoose;
+  final TextEditingController exchangeCodeController;
+  final bool showExchangeCode;
 
   @override
   Widget build(BuildContext context) {
@@ -454,40 +541,108 @@ class _PayChooseCard extends StatelessWidget {
             style: TextStyle(fontSize: 16, color: AppTheme.textPrimary),
           ),
           const SizedBox(height: 12),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
+          _PayChooseItem(
+            active: payChoose == 1,
             onTap: () => onChoose(1),
-            child: Container(
-              height: 48,
-              padding: const EdgeInsets.symmetric(horizontal: 14.5),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: payChoose == 1
-                      ? AppTheme.brand
-                      : const Color(0xFFEEEEEE),
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Image.asset(
-                    'assets/static/image/wxpay.png',
-                    width: 26,
-                    height: 26,
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    '微信支付',
-                    style: TextStyle(fontSize: 16, color: Color(0xFF111111)),
-                  ),
-                  const Spacer(),
-                  _ChooseIndicator(active: payChoose == 1),
-                ],
-              ),
+            leading: Image.asset(
+              'assets/static/image/wxpay.png',
+              width: 26,
+              height: 26,
             ),
+            title: '微信支付',
           ),
+          if (showExchangeCode) ...[
+            const SizedBox(height: 10),
+            _PayChooseItem(
+              active: payChoose == 3,
+              onTap: () => onChoose(3),
+              leading: const Icon(
+                Icons.confirmation_number_outlined,
+                size: 26,
+                color: AppTheme.brand,
+              ),
+              title: '兑换码',
+            ),
+            if (payChoose == 3) ...[
+              const SizedBox(height: 10),
+              _ExchangeCodeField(controller: exchangeCodeController),
+            ],
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _PayChooseItem extends StatelessWidget {
+  const _PayChooseItem({
+    required this.active,
+    required this.onTap,
+    required this.leading,
+    required this.title,
+  });
+
+  final bool active;
+  final VoidCallback onTap;
+  final Widget leading;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 14.5),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: active ? AppTheme.brand : const Color(0xFFEEEEEE),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            SizedBox(width: 26, height: 26, child: Center(child: leading)),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 16, color: Color(0xFF111111)),
+            ),
+            const Spacer(),
+            _ChooseIndicator(active: active),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExchangeCodeField extends StatelessWidget {
+  const _ExchangeCodeField({required this.controller});
+
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 14.5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFAFA),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFEEEEEE)),
+      ),
+      child: TextField(
+        controller: controller,
+        textInputAction: TextInputAction.done,
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          hintText: '请输入兑换码',
+          hintStyle: TextStyle(color: Color(0xFFCCCCCC), fontSize: 15),
+        ),
+        style: const TextStyle(fontSize: 15, color: AppTheme.textPrimary),
       ),
     );
   }
@@ -658,6 +813,7 @@ class _SubmitCoupon {
     required this.couponPrice,
     required this.imageUrl,
     required this.validPeriodText,
+    required this.supportsExchangeCode,
   });
 
   final String shopName;
@@ -665,6 +821,7 @@ class _SubmitCoupon {
   final double couponPrice;
   final String imageUrl;
   final String validPeriodText;
+  final bool supportsExchangeCode;
 
   factory _SubmitCoupon.fromJson(Map<String, dynamic> json) {
     final images = json['imageList'];
@@ -676,6 +833,7 @@ class _SubmitCoupon {
           ? _imageUrl(images.first)
           : '',
       validPeriodText: _formatValidPeriod(json['validPeriod']),
+      supportsExchangeCode: _asInt(json['exchangeCodeFlag']) == 1,
     );
   }
 }
@@ -709,6 +867,13 @@ double? _asDouble(dynamic value) {
   if (value == null) return null;
   if (value is num) return value.toDouble();
   return double.tryParse(value.toString());
+}
+
+int? _asInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString());
 }
 
 String _money(double value) {
