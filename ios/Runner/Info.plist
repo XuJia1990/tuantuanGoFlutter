@@ -46,14 +46,16 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSCameraUsageDescription</key>
-	<string>需要使用相机扫描二维码</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_dartobservatory._tcp</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>需要使用相机扫描二维码</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>用于开发调试时连接 Flutter 调试服务</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>需要获取当前位置，为你推荐附近的店铺和优惠</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
