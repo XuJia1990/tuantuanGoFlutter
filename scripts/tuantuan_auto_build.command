@@ -8,6 +8,7 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-$HOME/Desktop/tuantuan_builds}"
 
 APP_ENV=""
 TARGET=""
+IOS_EXPORT_METHOD=""
 CLEAN=false
 SKIP_ANALYZE=false
 OPEN_OUTPUT=true
@@ -26,6 +27,8 @@ Examples:
   ./scripts/tuantuan_auto_build.command prod ipa
 
 Options:
+  --ios-export-method <method>
+                   iOS export method: development, ad-hoc, app-store, enterprise
   --clean          Run flutter clean before building
   --skip-analyze   Skip flutter analyze
   --no-open        Do not open output folder after build
@@ -39,6 +42,13 @@ EOF
 
 for arg in "$@"; do
   case "$arg" in
+    --ios-export-method)
+      echo "错误：--ios-export-method 需要写成 --ios-export-method=development 这种形式。"
+      exit 1
+      ;;
+    --ios-export-method=*)
+      IOS_EXPORT_METHOD="${arg#*=}"
+      ;;
     --clean)
       CLEAN=true
       ;;
@@ -116,6 +126,39 @@ case "$TARGET" in
     ;;
 esac
 
+if [[ "$TARGET" == "ipa" && -z "$IOS_EXPORT_METHOD" ]]; then
+  echo ""
+  echo "请选择 iOS 导出方式："
+  echo "  1) development  真机测试安装，使用开发证书/开发描述文件"
+  echo "  2) ad-hoc       指定设备安装，使用发布证书/Ad Hoc 描述文件"
+  echo "  3) app-store    上传 TestFlight/App Store，不能直接安装到手机"
+  echo "  4) enterprise   企业分发"
+  read "choice?输入 1/2/3/4，默认 1: "
+  case "${choice:-1}" in
+    2|ad-hoc)
+      IOS_EXPORT_METHOD="ad-hoc"
+      ;;
+    3|app-store)
+      IOS_EXPORT_METHOD="app-store"
+      ;;
+    4|enterprise)
+      IOS_EXPORT_METHOD="enterprise"
+      ;;
+    *)
+      IOS_EXPORT_METHOD="development"
+      ;;
+  esac
+fi
+
+case "$IOS_EXPORT_METHOD" in
+  ""|development|ad-hoc|app-store|enterprise)
+    ;;
+  *)
+    echo "错误：iOS 导出方式只能是 development、ad-hoc、app-store 或 enterprise，当前是：$IOS_EXPORT_METHOD"
+    exit 1
+    ;;
+esac
+
 if [[ -t 0 && "$CLEAN" == false ]]; then
   echo ""
   read "do_clean?是否先执行 flutter clean？[y/N]: "
@@ -178,7 +221,7 @@ build_apk() {
 }
 
 build_ipa() {
-  run flutter build ipa --release --dart-define=APP_ENV="$APP_ENV"
+  run flutter build ipa --release --export-method "$IOS_EXPORT_METHOD" --dart-define=APP_ENV="$APP_ENV"
   local ipa_file
   ipa_file="$(find build/ios/ipa -maxdepth 1 -type f -name '*.ipa' | head -n 1 || true)"
   if [[ -z "$ipa_file" ]]; then
@@ -193,6 +236,9 @@ echo "团团 Flutter 自动打包"
 echo "项目：$PROJECT_DIR"
 echo "环境：$APP_ENV"
 echo "类型：$TARGET"
+if [[ "$TARGET" == "ipa" ]]; then
+  echo "iOS导出：$IOS_EXPORT_METHOD"
+fi
 echo "版本：$BUILD_NAME+$BUILD_NUMBER"
 echo "输出：$OUTPUT_DIR"
 echo "========================================"

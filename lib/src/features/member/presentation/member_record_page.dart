@@ -314,7 +314,7 @@ class _MemberRecordPageState extends ConsumerState<MemberRecordPage> {
                               canRefund:
                                   _allowRefund &&
                                   _isManager &&
-                                  _items[index].isConsumption,
+                                  _items[index].canRequestRefund,
                               onRefund: () => _refund(_items[index]),
                             ),
                         ],
@@ -806,7 +806,7 @@ class _RecordCardContent extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
-                          color: item.isConsumption || item.isApprovalPending
+                          color: item.isConsumption
                               ? AppTheme.textPrimary
                               : AppTheme.brand,
                         ),
@@ -1062,7 +1062,10 @@ class MemberOrderRecord {
     return Colors.black;
   }
 
-  String get moneyText => isConsumption || isApprovalPending
+  bool get canRequestRefund =>
+      isConsumption && refundStatus != 1 && refundStatus != 2;
+
+  String get moneyText => isConsumption
       ? '-${money.isEmpty ? 0 : money}'
       : '+${money.isEmpty ? 0 : money}';
 
