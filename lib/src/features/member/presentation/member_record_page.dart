@@ -786,7 +786,7 @@ class _RecordCardContent extends StatelessWidget {
                                             height: 1,
                                             color:
                                                 item.tipText == '已全额退款' ||
-                                                    item.tipText == '审批中'
+                                                    item.tipText == '退款审批中'
                                                 ? Colors.red
                                                 : const Color(0xFFC1C1C1),
                                           ),
@@ -806,7 +806,7 @@ class _RecordCardContent extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
-                          color: item.isConsumption
+                          color: item.isConsumptionLike
                               ? AppTheme.textPrimary
                               : AppTheme.brand,
                         ),
@@ -839,7 +839,7 @@ class _RecordCardContent extends StatelessWidget {
                     _DetailLine(label: '操作员', value: item.operator),
                   if (item.shopDisplayName.isNotEmpty)
                     _DetailLine(label: '店铺', value: item.shopDisplayName),
-                  if (!item.isConsumption && item.remark.isNotEmpty)
+                  if (!item.isConsumptionLike && item.remark.isNotEmpty)
                     _DetailLine(label: '备注', value: item.remark),
                 ],
               ),
@@ -1036,18 +1036,30 @@ class MemberOrderRecord {
 
   bool get isApprovalPending => useStatus == 4;
 
+  bool get isRefundedConsumption => useStatus == 5;
+
+  bool get isRefundApprovalConsumption => useStatus == 6;
+
+  bool get isConsumptionLike =>
+      isConsumption ||
+      isRefundedConsumption ||
+      isRefundApprovalConsumption ||
+      (useStatus == 0 && memberOrderFlg == '消费');
+
   String get statusText {
     return switch (useStatus) {
       1 => '充值',
       2 => '消费',
       3 => '退款',
       4 => '审批中',
+      5 => '消费',
+      6 => '消费',
       _ => memberOrderFlg,
     };
   }
 
   String get badgeText {
-    if (isConsumption) return '消';
+    if (isConsumptionLike) return '消';
     if (isRecharge) return '充';
     if (isRefund) return '退';
     if (isApprovalPending) return '审';
@@ -1055,7 +1067,7 @@ class MemberOrderRecord {
   }
 
   Color get badgeColor {
-    if (isConsumption) return const Color(0xFFCCCCCC);
+    if (isConsumptionLike) return const Color(0xFFCCCCCC);
     if (isRecharge) return AppTheme.brand;
     if (isRefund) return const Color(0xFF126CFF);
     if (isApprovalPending) return const Color(0xFFFF4D00);
@@ -1065,7 +1077,7 @@ class MemberOrderRecord {
   bool get canRequestRefund =>
       isConsumption && refundStatus != 1 && refundStatus != 2;
 
-  String get moneyText => isConsumption
+  String get moneyText => isConsumptionLike
       ? '-${money.isEmpty ? 0 : money}'
       : '+${money.isEmpty ? 0 : money}';
 
@@ -1082,6 +1094,8 @@ class MemberOrderRecord {
     if (isRefund) {
       return '操作人：${userMobile.isEmpty ? '后台' : userMobile}';
     }
+    if (isRefundedConsumption) return '已全额退款';
+    if (isRefundApprovalConsumption) return '退款审批中';
     return '';
   }
 
@@ -1101,7 +1115,8 @@ class MemberOrderRecord {
       paymentWay: int.tryParse(json['paymentWay']?.toString() ?? '') ?? 0,
       onlineFlag: int.tryParse(json['onlineFlag']?.toString() ?? '') ?? 0,
       userMobile: json['userMobile']?.toString() ?? '',
-      useStatus: int.tryParse(json['useStatus']?.toString() ?? '') ?? 0,
+      useStatus:
+          _asInt(json['useStatus']) ?? _statusFromFlag(json['memberOrderFlg']),
       refundStatus: _asInt(json['refundStatus']) ?? 0,
       money: json['money']?.toString() ?? '0',
       memberOrderDatetime: json['memberOrderDatetime']?.toString() ?? '',
@@ -1119,7 +1134,18 @@ int? _asInt(dynamic value) {
   if (value == null) return null;
   if (value is int) return value;
   if (value is num) return value.toInt();
-  return int.tryParse(value.toString());
+  final raw = value.toString().trim();
+  return int.tryParse(raw) ?? double.tryParse(raw)?.toInt();
+}
+
+int _statusFromFlag(dynamic value) {
+  return switch (value?.toString().trim()) {
+    '充值' => 1,
+    '消费' => 2,
+    '退款' => 3,
+    '审批中' => 4,
+    _ => 0,
+  };
 }
 
 String _paymentName(int id) {
