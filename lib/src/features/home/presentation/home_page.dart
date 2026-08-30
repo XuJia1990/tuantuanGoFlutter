@@ -21,6 +21,8 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
+  static bool _hasCheckedSplashAdThisLaunch = false;
+
   final _pageController = PageController();
 
   List<Station> _stations = const [];
@@ -144,6 +146,9 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Future<void> _maybeShowSplashAd() async {
+    if (_hasCheckedSplashAdThisLaunch) return;
+    _hasCheckedSplashAdThisLaunch = true;
+
     try {
       final raw = await ref
           .read(apiClientProvider)
