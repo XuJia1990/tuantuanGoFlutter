@@ -21,6 +21,8 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
+  static const _fallbackLongitude = 139.7708856;
+  static const _fallbackLatitude = 35.7085405;
   static bool _hasCheckedSplashAdThisLaunch = false;
 
   final _pageController = PageController();
@@ -175,7 +177,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        return (0.0, 0.0);
+        return (_fallbackLongitude, _fallbackLatitude);
       }
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -183,9 +185,12 @@ class _HomePageState extends ConsumerState<HomePage> {
           timeLimit: Duration(seconds: 5),
         ),
       );
+      if (position.longitude == 0 && position.latitude == 0) {
+        return (_fallbackLongitude, _fallbackLatitude);
+      }
       return (position.longitude, position.latitude);
     } catch (_) {
-      return (0.0, 0.0);
+      return (_fallbackLongitude, _fallbackLatitude);
     }
   }
 
