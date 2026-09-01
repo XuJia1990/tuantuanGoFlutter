@@ -18,10 +18,7 @@ class TuanTuanGoApp extends ConsumerWidget {
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: () {
-            final focus = FocusManager.instance.primaryFocus;
-            if (focus != null && !focus.hasPrimaryFocus) {
-              focus.unfocus();
-            }
+            FocusManager.instance.primaryFocus?.unfocus();
           },
           child: child ?? const SizedBox.shrink(),
         );

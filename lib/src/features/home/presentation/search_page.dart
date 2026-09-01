@@ -54,6 +54,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   }
 
   Future<void> _search() async {
+    FocusManager.instance.primaryFocus?.unfocus();
     _keyword = _controller.text.trim();
     setState(() {
       _hasSearched = true;

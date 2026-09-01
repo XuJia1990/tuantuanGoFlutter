@@ -51,7 +51,7 @@
 		<string>_dartobservatory._tcp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>需要使用相机扫描二维码</string>
+	<string>需要使用相机扫描二维码和拍摄头像</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>用于开发调试时连接 Flutter 调试服务</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

@@ -839,8 +839,8 @@ class _RecordCardContent extends StatelessWidget {
                     _DetailLine(label: '操作员', value: item.operator),
                   if (item.shopDisplayName.isNotEmpty)
                     _DetailLine(label: '店铺', value: item.shopDisplayName),
-                  if (!item.isConsumptionLike && item.remark.isNotEmpty)
-                    _DetailLine(label: '备注', value: item.remark),
+                  if (!item.isConsumptionLike && item.displayRemark.isNotEmpty)
+                    _DetailLine(label: '备注', value: item.displayRemark),
                 ],
               ),
             ),
@@ -1023,6 +1023,8 @@ class MemberOrderRecord {
   final String refundShopName;
   final String remark;
 
+  String get displayRemark => _cleanRemarkForDisplay(remark);
+
   String get identityKey {
     if (memberOrderId.isNotEmpty) return '$memberOrderId-$useStatus';
     return '$useStatus-$memberOrderDatetime-$money-$balance';
@@ -1136,6 +1138,18 @@ int? _asInt(dynamic value) {
   if (value is num) return value.toInt();
   final raw = value.toString().trim();
   return int.tryParse(raw) ?? double.tryParse(raw)?.toInt();
+}
+
+String _cleanRemarkForDisplay(String value) {
+  final text = value.trim();
+  final hasCjk = RegExp(r'[\u3400-\u9FFF\u3040-\u30FF]').hasMatch(text);
+  if (!hasCjk) return text;
+  return text
+      .replaceAllMapped(
+        RegExp(r'\?([^?]+?)\?'),
+        (match) => '【${match.group(1)?.trim() ?? ''}】',
+      )
+      .trim();
 }
 
 int _statusFromFlag(dynamic value) {

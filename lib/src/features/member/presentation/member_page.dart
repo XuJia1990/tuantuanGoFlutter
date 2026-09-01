@@ -181,15 +181,19 @@ class _MemberPageState extends ConsumerState<MemberPage> {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
         ),
         actions: [
-          IconButton(
-            onPressed: _scanJoin,
-            icon: Image.asset(
-              'assets/static/image/s-code.png',
-              width: 25,
-              height: 25,
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              tooltip: '扫一扫',
+              onPressed: _scanJoin,
+              icon: Image.asset(
+                'assets/static/image/s-code.png',
+                width: 28,
+                height: 28,
+                color: AppTheme.textPrimary,
+              ),
             ),
           ),
-          const SizedBox(width: 8),
         ],
       ),
       body: Stack(

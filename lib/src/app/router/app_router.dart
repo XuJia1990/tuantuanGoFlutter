@@ -110,6 +110,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
+        path: '/avatar-camera',
+        builder: (context, state) => const AvatarCameraPage(),
+      ),
+      GoRoute(
         path: '/purchased-coupons',
         builder: (context, state) => const PurchasedCouponsPage(),
       ),

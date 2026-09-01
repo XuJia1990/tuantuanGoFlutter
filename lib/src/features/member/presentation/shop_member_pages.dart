@@ -116,7 +116,11 @@ class _CreateMemberPageState extends ConsumerState<CreateMemberPage> {
           ? (_scannedShopId.isNotEmpty ? _scannedShopId : _user.shopId)
           : _scannedShopId,
     };
-    if (_from == 'shop') params['userId'] = _scannedUserId;
+    if (_from == 'shop') {
+      params['userId'] = _scannedUserId;
+    } else {
+      params['successReturnTo'] = 'member';
+    }
     if (!mounted) return;
     context.push(
       Uri(path: '/member-recharge', queryParameters: params).toString(),
@@ -361,123 +365,128 @@ class _ShopMemberDetailListPageState
         title: title,
         onBack: () => _safeMemberBack(context),
       ),
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              Container(
-                height: 70,
-                color: Colors.white,
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
-                child: Container(
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF5F5F5),
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 13),
-                      const Icon(
-                        Icons.search,
-                        color: Color(0xFF9E9E9E),
-                        size: 24,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          textInputAction: TextInputAction.search,
-                          textAlignVertical: TextAlignVertical.center,
-                          onSubmitted: (_) {
-                            FocusScope.of(context).unfocus();
-                            _load(reset: true);
-                          },
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: AppTheme.textPrimary,
-                          ),
-                          cursorColor: AppTheme.brand,
-                          decoration: const InputDecoration(
-                            isCollapsed: true,
-                            filled: false,
-                            fillColor: Colors.transparent,
-                            hoverColor: Colors.transparent,
-                            contentPadding: EdgeInsets.zero,
-                            hintText: '请输入会员账号',
-                            hintStyle: TextStyle(
-                              color: Color(0xFFCFCFCF),
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                Container(
+                  height: 70,
+                  color: Colors.white,
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+                  child: Container(
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5F5F5),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 13),
+                        const Icon(
+                          Icons.search,
+                          color: Color(0xFF9E9E9E),
+                          size: 24,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            textInputAction: TextInputAction.search,
+                            textAlignVertical: TextAlignVertical.center,
+                            onSubmitted: (_) {
+                              FocusScope.of(context).unfocus();
+                              _load(reset: true);
+                            },
+                            style: const TextStyle(
                               fontSize: 16,
+                              color: AppTheme.textPrimary,
                             ),
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
+                            cursorColor: AppTheme.brand,
+                            decoration: const InputDecoration(
+                              isCollapsed: true,
+                              filled: false,
+                              fillColor: Colors.transparent,
+                              hoverColor: Colors.transparent,
+                              contentPadding: EdgeInsets.zero,
+                              hintText: '请输入会员账号',
+                              hintStyle: TextStyle(
+                                color: Color(0xFFCFCFCF),
+                                fontSize: 16,
+                              ),
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                            ),
                           ),
                         ),
-                      ),
-                      if (_searchController.text.isNotEmpty)
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: _clearSearch,
-                          child: const SizedBox(
-                            width: 40,
-                            height: 44,
-                            child: Center(
-                              child: CircleAvatar(
-                                radius: 10,
-                                backgroundColor: Color(0xFFB8B8B8),
-                                child: Icon(
-                                  Icons.close,
-                                  color: Colors.white,
-                                  size: 14,
+                        if (_searchController.text.isNotEmpty)
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _clearSearch,
+                            child: const SizedBox(
+                              width: 40,
+                              height: 44,
+                              child: Center(
+                                child: CircleAvatar(
+                                  radius: 10,
+                                  backgroundColor: Color(0xFFB8B8B8),
+                                  child: Icon(
+                                    Icons.close,
+                                    color: Colors.white,
+                                    size: 14,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        )
-                      else
-                        const SizedBox(width: 14),
-                    ],
+                          )
+                        else
+                          const SizedBox(width: 14),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              Expanded(
-                child: NotificationListener<ScrollNotification>(
-                  onNotification: (notification) {
-                    _maybeLoadMore(notification);
-                    return false;
-                  },
-                  child: RefreshIndicator(
-                    color: AppTheme.brand,
-                    onRefresh: () => _load(reset: true),
-                    child: _items.isEmpty && !_loading
-                        ? _MemberListEmpty(onScan: _scanCreateMember)
-                        : ListView.builder(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.all(16),
-                            itemCount: _items.length + (_items.isEmpty ? 0 : 1),
-                            itemBuilder: (context, index) {
-                              if (index == _items.length) {
-                                return _LoadMoreText(
-                                  loadingMore: _loadingMore,
-                                  noMore: _items.length >= _total,
+                Expanded(
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (notification) {
+                      _maybeLoadMore(notification);
+                      return false;
+                    },
+                    child: RefreshIndicator(
+                      color: AppTheme.brand,
+                      onRefresh: () => _load(reset: true),
+                      child: _items.isEmpty && !_loading
+                          ? _MemberListEmpty(onScan: _scanCreateMember)
+                          : ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.all(16),
+                              itemCount:
+                                  _items.length + (_items.isEmpty ? 0 : 1),
+                              itemBuilder: (context, index) {
+                                if (index == _items.length) {
+                                  return _LoadMoreText(
+                                    loadingMore: _loadingMore,
+                                    noMore: _items.length >= _total,
+                                  );
+                                }
+                                final item = _items[index];
+                                return _ShopMemberCard(
+                                  item: item,
+                                  onRecharge: () => _goRecharge(item),
+                                  onRecord: () => _goRecord(item),
                                 );
-                              }
-                              final item = _items[index];
-                              return _ShopMemberCard(
-                                item: item,
-                                onRecharge: () => _goRecharge(item),
-                                onRecord: () => _goRecord(item),
-                              );
-                            },
-                          ),
+                              },
+                            ),
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          if (_loading) const _LoadingOverlay(),
-        ],
+              ],
+            ),
+            if (_loading) const _LoadingOverlay(),
+          ],
+        ),
       ),
     );
   }

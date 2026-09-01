@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -50,6 +51,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
   Future<void> _chooseImage() async {
+    final router = GoRouter.of(context);
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       backgroundColor: Colors.white,
@@ -73,17 +75,19 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         );
       },
     );
-    if (source == null) return;
-    final image = await _picker.pickImage(
-      source: source,
-      maxWidth: 600,
-      maxHeight: 600,
-      imageQuality: 85,
-    );
-    if (image == null) return;
+    if (source == null || !mounted) return;
+    final imagePath = source == ImageSource.camera
+        ? await router.push<String>('/avatar-camera')
+        : (await _picker.pickImage(
+            source: source,
+            maxWidth: 600,
+            maxHeight: 600,
+            imageQuality: 85,
+          ))?.path;
+    if (imagePath == null || imagePath.isEmpty) return;
     if (!mounted) return;
-    final cropped = await context.push<String>(
-      '/avatar-cropper?path=${Uri.encodeComponent(image.path)}',
+    final cropped = await router.push<String>(
+      '/avatar-cropper?path=${Uri.encodeComponent(imagePath)}',
     );
     if (!mounted || cropped == null || cropped.isEmpty) return;
     setState(() => _base64 = cropped);
@@ -218,6 +222,341 @@ class AvatarCropperPage extends StatefulWidget {
   State<AvatarCropperPage> createState() => _AvatarCropperPageState();
 }
 
+class AvatarCameraPage extends StatefulWidget {
+  const AvatarCameraPage({super.key});
+
+  @override
+  State<AvatarCameraPage> createState() => _AvatarCameraPageState();
+}
+
+class _AvatarCameraPageState extends State<AvatarCameraPage> {
+  CameraController? _controller;
+  List<CameraDescription> _cameras = const [];
+  int _cameraIndex = 0;
+  bool _initializing = true;
+  bool _switching = false;
+  bool _taking = false;
+  String _error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _initCamera();
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initCamera() async {
+    setState(() {
+      _initializing = true;
+      _error = '';
+    });
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _initializing = false;
+            _error = '未检测到可用相机';
+          });
+        }
+        return;
+      }
+      final backIndex = cameras.indexWhere(
+        (item) => item.lensDirection == CameraLensDirection.back,
+      );
+      _cameras = cameras;
+      _cameraIndex = backIndex == -1 ? 0 : backIndex;
+      await _openCamera(cameras[_cameraIndex]);
+    } on CameraException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _initializing = false;
+        _switching = false;
+        _error = _cameraErrorMessage(error);
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _initializing = false;
+        _switching = false;
+        _error = error.toString();
+      });
+    }
+  }
+
+  Future<void> _openCamera(CameraDescription camera) async {
+    final previousController = _controller;
+    if (mounted) {
+      setState(() {
+        _controller = null;
+        _initializing = true;
+        _error = '';
+      });
+    }
+    await previousController?.dispose();
+    final controller = CameraController(
+      camera,
+      ResolutionPreset.high,
+      enableAudio: false,
+    );
+    try {
+      await controller.initialize();
+      try {
+        final minZoom = await controller.getMinZoomLevel();
+        await controller.setZoomLevel(minZoom);
+      } catch (_) {}
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() {
+        _controller = controller;
+        _initializing = false;
+        _switching = false;
+      });
+    } catch (_) {
+      await controller.dispose();
+      rethrow;
+    }
+  }
+
+  Future<void> _switchCamera() async {
+    if (_cameras.length < 2 || _switching || _taking) return;
+    setState(() => _switching = true);
+    final nextIndex = (_cameraIndex + 1) % _cameras.length;
+    try {
+      await _openCamera(_cameras[nextIndex]);
+      _cameraIndex = nextIndex;
+    } on CameraException catch (error) {
+      if (!mounted) return;
+      AppToast.show(context, _cameraErrorMessage(error));
+      setState(() => _switching = false);
+    } catch (error) {
+      if (!mounted) return;
+      AppToast.show(context, error.toString());
+      setState(() => _switching = false);
+    }
+  }
+
+  String _cameraErrorMessage(CameraException error) {
+    return switch (error.code) {
+      'CameraAccessDenied' => '请在系统设置中开启相机权限',
+      'CameraAccessDeniedWithoutPrompt' => '请在系统设置中开启相机权限',
+      'CameraAccessRestricted' => '当前设备相机权限受限',
+      _ => '相机启动失败',
+    };
+  }
+
+  Future<void> _takePhoto() async {
+    final controller = _controller;
+    if (controller == null ||
+        !controller.value.isInitialized ||
+        controller.value.isTakingPicture ||
+        _taking) {
+      return;
+    }
+    setState(() => _taking = true);
+    try {
+      final file = await controller.takePicture();
+      if (!mounted) return;
+      context.pop(file.path);
+    } on CameraException catch (error) {
+      if (!mounted) return;
+      AppToast.show(context, _cameraErrorMessage(error));
+      setState(() => _taking = false);
+    } catch (error) {
+      if (!mounted) return;
+      AppToast.show(context, error.toString());
+      setState(() => _taking = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: controller == null ||
+                    _initializing ||
+                    !controller.value.isInitialized
+                ? _CameraPlaceholder(error: _error, onRetry: _initCamera)
+                : _AvatarCameraPreview(controller: controller),
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: IconButton(
+                onPressed: () => context.pop(),
+                icon: const Icon(Icons.close, color: Colors.white, size: 34),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: MediaQuery.paddingOf(context).bottom + 38,
+            child: Center(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _taking ? null : _takePhoto,
+                child: Container(
+                  width: 82,
+                  height: 82,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white54, width: 4),
+                  ),
+                  child: Container(
+                    width: 66,
+                    height: 66,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: _taking
+                        ? const Padding(
+                            padding: EdgeInsets.all(18),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              color: Colors.black,
+                            ),
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (_cameras.length > 1)
+            Positioned(
+              right: 42,
+              bottom: MediaQuery.paddingOf(context).bottom + 52,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _initializing || _taking || _switching
+                    ? null
+                    : _switchCamera,
+                child: Container(
+                  width: 58,
+                  height: 58,
+                  decoration: const BoxDecoration(
+                    color: Color(0x99000000),
+                    shape: BoxShape.circle,
+                  ),
+                  child: _switching
+                      ? const Padding(
+                          padding: EdgeInsets.all(18),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.flip_camera_ios_outlined,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AvatarCameraPreview extends StatelessWidget {
+  const _AvatarCameraPreview({required this.controller});
+
+  final CameraController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final previewSize = controller.value.previewSize;
+        final fallbackHeight =
+            constraints.maxWidth * controller.value.aspectRatio;
+        final previewWidth = previewSize?.height ?? constraints.maxWidth;
+        final previewHeight = previewSize?.width ?? fallbackHeight;
+        return Container(
+          color: Colors.black,
+          alignment: Alignment.center,
+          child: FittedBox(
+            fit: BoxFit.contain,
+            child: SizedBox(
+              width: previewWidth,
+              height: previewHeight,
+              child: CameraPreview(controller),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CameraPlaceholder extends StatelessWidget {
+  const _CameraPlaceholder({required this.error, required this.onRetry});
+
+  final String error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (error.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      );
+    }
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.photo_camera_outlined,
+              color: Colors.white70,
+              size: 54,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              error,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontSize: 15),
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton(
+              onPressed: () {
+                if (error.contains('权限')) {
+                  openAppSettings();
+                  return;
+                }
+                onRetry();
+              },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white54),
+              ),
+              child: Text(error.contains('权限') ? '去设置' : '重试'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _AvatarCropperPageState extends State<AvatarCropperPage> {
   final _boundaryKey = GlobalKey();
   final _picker = ImagePicker();
@@ -225,6 +564,7 @@ class _AvatarCropperPageState extends State<AvatarCropperPage> {
   bool _saving = false;
 
   Future<void> _replaceImage() async {
+    final router = GoRouter.of(context);
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       backgroundColor: Colors.white,
@@ -248,15 +588,17 @@ class _AvatarCropperPageState extends State<AvatarCropperPage> {
         );
       },
     );
-    if (source == null) return;
-    final image = await _picker.pickImage(
-      source: source,
-      maxWidth: 900,
-      maxHeight: 900,
-      imageQuality: 90,
-    );
-    if (image == null || !mounted) return;
-    setState(() => _path = image.path);
+    if (source == null || !mounted) return;
+    final imagePath = source == ImageSource.camera
+        ? await router.push<String>('/avatar-camera')
+        : (await _picker.pickImage(
+            source: source,
+            maxWidth: 900,
+            maxHeight: 900,
+            imageQuality: 90,
+          ))?.path;
+    if (imagePath == null || imagePath.isEmpty || !mounted) return;
+    setState(() => _path = imagePath);
   }
 
   Future<void> _confirm() async {
@@ -304,25 +646,34 @@ class _AvatarCropperPageState extends State<AvatarCropperPage> {
       body: Stack(
         children: [
           Center(
-            child: RepaintBoundary(
-              key: _boundaryKey,
-              child: Container(
-                width: 300,
-                height: 300,
-                color: Colors.black,
-                child: ClipRect(
-                  child: InteractiveViewer(
-                    minScale: 1,
-                    maxScale: 5,
-                    boundaryMargin: const EdgeInsets.all(120),
-                    child: Image.file(
-                      File(_path),
+            child: SizedBox(
+              width: 300,
+              height: 300,
+              child: Stack(
+                children: [
+                  RepaintBoundary(
+                    key: _boundaryKey,
+                    child: Container(
                       width: 300,
                       height: 300,
-                      fit: BoxFit.cover,
+                      color: Colors.black,
+                      child: ClipRect(
+                        child: InteractiveViewer(
+                          minScale: 1,
+                          maxScale: 5,
+                          boundaryMargin: const EdgeInsets.all(120),
+                          child: Image.file(
+                            File(_path),
+                            width: 300,
+                            height: 300,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  const IgnorePointer(child: _CropCornerFrame()),
+                ],
               ),
             ),
           ),
@@ -341,6 +692,72 @@ class _AvatarCropperPageState extends State<AvatarCropperPage> {
             ),
           ),
           if (_saving) const _LoadingOverlay(),
+        ],
+      ),
+    );
+  }
+}
+
+class _CropCornerFrame extends StatelessWidget {
+  const _CropCornerFrame();
+
+  static const _color = Colors.white;
+  static const _length = 32.0;
+  static const _thickness = 3.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: const [
+        Positioned(top: 0, left: 0, child: _CropCorner()),
+        Positioned(
+          top: 0,
+          right: 0,
+          child: RotatedBox(quarterTurns: 1, child: _CropCorner()),
+        ),
+        Positioned(
+          right: 0,
+          bottom: 0,
+          child: RotatedBox(quarterTurns: 2, child: _CropCorner()),
+        ),
+        Positioned(
+          left: 0,
+          bottom: 0,
+          child: RotatedBox(quarterTurns: 3, child: _CropCorner()),
+        ),
+      ],
+    );
+  }
+}
+
+class _CropCorner extends StatelessWidget {
+  const _CropCorner();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: _CropCornerFrame._length,
+      height: _CropCornerFrame._length,
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            top: 0,
+            child: Container(
+              width: _CropCornerFrame._length,
+              height: _CropCornerFrame._thickness,
+              color: _CropCornerFrame._color,
+            ),
+          ),
+          Positioned(
+            left: 0,
+            top: 0,
+            child: Container(
+              width: _CropCornerFrame._thickness,
+              height: _CropCornerFrame._length,
+              color: _CropCornerFrame._color,
+            ),
+          ),
         ],
       ),
     );
@@ -981,6 +1398,15 @@ class _ScanCodePageState extends ConsumerState<ScanCodePage>
     await _controller.start();
   }
 
+  Future<void> _toggleTorch() async {
+    try {
+      await _controller.toggleTorch();
+    } catch (_) {
+      if (!mounted) return;
+      _toast('当前设备不支持手电筒');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -991,7 +1417,8 @@ class _ScanCodePageState extends ConsumerState<ScanCodePage>
             MobileScanner(controller: _controller, onDetect: _onDetect)
           else
             _CameraPermissionView(onOpenSettings: openAppSettings),
-          if (_hasPermission) const _ScanOverlay(),
+          if (_hasPermission)
+            _ScanOverlay(controller: _controller, onTorchTap: _toggleTorch),
           if (_writeOffVisible)
             _WriteOffResultOverlay(
               loading: _writeOffLoading,
@@ -1483,7 +1910,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _SettingGroup(
             children: [
               _SettingRow(
-                title: '修改密码',
+                title: '修改登录密码',
                 onTap: () =>
                     context.push('/forget-password?type=updatePassword'),
               ),
@@ -1616,10 +2043,23 @@ class _ServicePageState extends ConsumerState<ServicePage> {
   final _emailController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    _contentController.addListener(_rebuild);
+    _emailController.addListener(_rebuild);
+  }
+
+  @override
   void dispose() {
+    _contentController.removeListener(_rebuild);
+    _emailController.removeListener(_rebuild);
     _contentController.dispose();
     _emailController.dispose();
     super.dispose();
+  }
+
+  void _rebuild() {
+    if (mounted) setState(() {});
   }
 
   void _toast(String message) {
@@ -1672,22 +2112,36 @@ class _ServicePageState extends ConsumerState<ServicePage> {
             decoration: _inputDecoration(),
             child: Stack(
               children: [
-                TextField(
-                  controller: _contentController,
-                  maxLength: 100,
-                  maxLines: null,
-                  decoration: const InputDecoration(
-                    counterText: '',
-                    border: InputBorder.none,
-                    hintText: '请输入您的问题,我们会在24小时内回复到您预留的邮箱',
-                    filled: false,
+                Positioned.fill(
+                  right: _contentController.text.isNotEmpty ? 30 : 0,
+                  bottom: 18,
+                  child: TextField(
+                    controller: _contentController,
+                    maxLength: 100,
+                    maxLines: null,
+                    decoration: const InputDecoration(
+                      counterText: '',
+                      border: InputBorder.none,
+                      hintText: '请输入您的问题,我们会在24小时内回复到您预留的邮箱',
+                      filled: false,
+                    ),
                   ),
-                  onChanged: (_) => setState(() {}),
                 ),
+                if (_contentController.text.isNotEmpty)
+                  Positioned(
+                    top: 2,
+                    right: 0,
+                    child: _ClearInputButton(
+                      onTap: () {
+                        _contentController.clear();
+                        FocusManager.instance.primaryFocus?.unfocus();
+                      },
+                    ),
+                  ),
                 Positioned(
                   right: 0,
                   bottom: 0,
-                  child: Text('${_contentController.text.length} /100'),
+                  child: Text('${_contentController.text.length}/100'),
                 ),
               ],
             ),
@@ -1695,15 +2149,28 @@ class _ServicePageState extends ConsumerState<ServicePage> {
           const SizedBox(height: 16),
           Container(
             height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
             decoration: _inputDecoration(),
-            child: TextField(
-              controller: _emailController,
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                hintText: '请输入您的邮箱地址',
-                filled: false,
-              ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _emailController,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      hintText: '请输入您的邮箱地址',
+                      filled: false,
+                    ),
+                  ),
+                ),
+                if (_emailController.text.isNotEmpty)
+                  _ClearInputButton(
+                    onTap: () {
+                      _emailController.clear();
+                      FocusManager.instance.primaryFocus?.unfocus();
+                    },
+                  ),
+              ],
             ),
           ),
           const SizedBox(height: 40),
@@ -1777,12 +2244,12 @@ class _SetPayPasswordPageState extends ConsumerState<SetPayPasswordPage> {
         children: [
           _PinInput(
             controller: _controller,
-            onCompleted: (_) => setState(() {}),
+            onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 40),
           _BottomGradientButton(
             text: _submitting ? '确认中...' : '确认',
-            onTap: _submitting ? null : _submit,
+            onTap: _submitting || _controller.text.length != 4 ? null : _submit,
           ),
         ],
       ),
@@ -1995,6 +2462,7 @@ class _BottomGradientButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final enabled = onTap != null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
       child: GestureDetector(
@@ -2003,7 +2471,8 @@ class _BottomGradientButton extends StatelessWidget {
           height: 40,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            gradient: AppTheme.brandGradient,
+            color: enabled ? null : const Color(0xFFCCCCCC),
+            gradient: enabled ? AppTheme.brandGradient : null,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
@@ -2013,6 +2482,31 @@ class _BottomGradientButton extends StatelessWidget {
               fontWeight: FontWeight.w600,
               color: Colors.white,
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ClearInputButton extends StatelessWidget {
+  const _ClearInputButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: const SizedBox(
+        width: 30,
+        height: 30,
+        child: Center(
+          child: CircleAvatar(
+            radius: 10,
+            backgroundColor: Color(0xFFCCCCCC),
+            child: Icon(Icons.close, color: Colors.white, size: 14),
           ),
         ),
       ),
@@ -2470,45 +2964,79 @@ class _SettingRow extends StatelessWidget {
 }
 
 class _PinInput extends StatelessWidget {
-  const _PinInput({required this.controller, this.onCompleted});
+  const _PinInput({required this.controller, this.onChanged});
 
   final TextEditingController controller;
-  final ValueChanged<String>? onCompleted;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      keyboardType: TextInputType.number,
-      obscureText: true,
-      textAlign: TextAlign.center,
-      maxLength: 4,
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-      style: const TextStyle(
-        fontSize: 28,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 14,
+    return SizedBox(
+      height: 54,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, _) {
+              final length = value.text.length;
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(4, (index) {
+                  final active = index == length && length < 4;
+                  final filled = index < length;
+                  return Container(
+                    width: 54,
+                    height: 54,
+                    margin: EdgeInsets.only(right: index == 3 ? 0 : 14),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: active
+                            ? AppTheme.brand
+                            : const Color(0xFFE5E5E5),
+                        width: active ? 1.2 : 1,
+                      ),
+                    ),
+                    child: filled
+                        ? Container(
+                            width: 10,
+                            height: 10,
+                            decoration: const BoxDecoration(
+                              color: AppTheme.textPrimary,
+                              shape: BoxShape.circle,
+                            ),
+                          )
+                        : null,
+                  );
+                }),
+              );
+            },
+          ),
+          Positioned.fill(
+            child: Opacity(
+              opacity: 0.01,
+              child: TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(
+                  counterText: '',
+                  border: InputBorder.none,
+                ),
+                style: const TextStyle(color: Colors.transparent),
+                cursorColor: Colors.transparent,
+                showCursor: false,
+                onChanged: onChanged,
+              ),
+            ),
+          ),
+        ],
       ),
-      decoration: InputDecoration(
-        counterText: '',
-        hintText: '请输入4位支付密码',
-        hintStyle: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w400,
-          letterSpacing: 0,
-          color: Color(0xFFBBBBBB),
-        ),
-        filled: true,
-        fillColor: const Color(0xFFF7F7F7),
-        contentPadding: const EdgeInsets.symmetric(vertical: 16),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(28),
-          borderSide: BorderSide.none,
-        ),
-      ),
-      onChanged: (value) {
-        if (value.length == 4) onCompleted?.call(value);
-      },
     );
   }
 }
@@ -2715,38 +3243,109 @@ class _PayCodeTick extends StatelessWidget {
 }
 
 class _ScanOverlay extends StatelessWidget {
-  const _ScanOverlay();
+  const _ScanOverlay({
+    required this.controller,
+    required this.onTorchTap,
+  });
+
+  final MobileScannerController controller;
+  final VoidCallback onTorchTap;
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final scanSize = size.width * 0.68;
-    return IgnorePointer(
-      child: Stack(
-        children: [
-          Positioned.fill(child: Container(color: const Color(0x66000000))),
-          Center(
-            child: Container(
-              width: scanSize,
-              height: scanSize,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.white, width: 1),
+    final scanTop = size.height / 2 - scanSize / 2;
+    return Stack(
+      children: [
+        IgnorePointer(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Container(color: const Color(0x66000000)),
               ),
-              child: CustomPaint(painter: _ScanCornerPainter()),
+              Center(
+                child: Container(
+                  width: scanSize,
+                  height: scanSize,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.white, width: 1),
+                  ),
+                  child: CustomPaint(painter: _ScanCornerPainter()),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                top: size.height / 2 + scanSize / 2 + 24,
+                child: const Text(
+                  '请将二维码放入框内',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white, fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          top: scanTop + scanSize - 78,
+          child: Center(
+            child: SizedBox(
+              width: 120,
+              height: 58,
+              child: _ScanTorchButton(
+                controller: controller,
+                onTap: onTorchTap,
+              ),
             ),
           ),
-          Positioned(
-            left: 0,
-            right: 0,
-            top: size.height / 2 + scanSize / 2 + 24,
-            child: const Text(
-              '请将二维码放入框内',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white, fontSize: 14),
-            ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ScanTorchButton extends StatelessWidget {
+  const _ScanTorchButton({
+    required this.controller,
+    required this.onTap,
+  });
+
+  final MobileScannerController controller;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<MobileScannerState>(
+      valueListenable: controller,
+      builder: (context, state, _) {
+        final isOn = state.torchState == TorchState.on;
+        final unavailable = state.torchState == TorchState.unavailable;
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: unavailable ? null : onTap,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isOn ? Icons.flashlight_on : Icons.flashlight_off,
+                color: unavailable ? const Color(0x99FFFFFF) : Colors.white,
+                size: 27,
+              ),
+              const SizedBox(height: 5),
+              Text(
+                isOn ? '轻触关闭' : '轻触照亮',
+                style: TextStyle(
+                  color: unavailable ? const Color(0x99FFFFFF) : Colors.white,
+                  fontSize: 13,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

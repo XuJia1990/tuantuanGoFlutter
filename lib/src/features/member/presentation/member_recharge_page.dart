@@ -58,6 +58,7 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
   int get _isShopCharge =>
       int.tryParse(widget.params['isShopCharge'] ?? '0') ?? 0;
   String get _routeShopId => widget.params['shopId'] ?? '';
+  String get _successReturnTo => widget.params['successReturnTo'] ?? '';
   String get _chargeShopId =>
       _selectedShopId.isNotEmpty ? _selectedShopId : _routeShopId;
   String get _routeUserId => widget.params['userId'] ?? '';
@@ -290,12 +291,15 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
   }
 
   Future<bool> _confirmPayPassword() async {
-    final password = await showDialog<String>(
+    final verified = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const _PayPasswordDialog(),
+      builder: (context) => _PayPasswordDialog(onVerify: _checkPayPassword),
     );
-    if (password == null) return false;
+    return verified == true;
+  }
+
+  Future<String?> _checkPayPassword(String password) async {
     try {
       final raw = await ref
           .read(apiClientProvider)
@@ -308,12 +312,11 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
         (data) => data is Map ? Map<String, dynamic>.from(data) : {},
       );
       final checkResult = envelope.data?['checkResult']?.toString();
-      if (envelope.isSuccess && checkResult == '0') return true;
-      _toast(envelope.message ?? '密码验证失败');
-      return false;
+      if (envelope.isSuccess && checkResult == '0') return null;
+      final message = envelope.message?.trim();
+      return message == null || message.isEmpty ? '支付密码错误' : message;
     } catch (_) {
-      _toast('密码验证失败');
-      return false;
+      return '密码验证失败';
     }
   }
 
@@ -333,7 +336,7 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
       'chargeMoney': _type == 1
           ? _amountController.text
           : num.tryParse(_routeNumber) ?? 0,
-      'remark': _remark,
+      'remark': _cleanRemarkForSubmit(_remark),
       'chargeShopId': _chargeShopId,
       'userId': _routeUserId,
       'discountWay': _isShopCharge == 1 ? _selectedDiscountTypeId : '',
@@ -587,6 +590,14 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
     AppToast.show(context, message);
   }
 
+  void _finishSuccess() {
+    if (_successReturnTo == 'member') {
+      context.go('/member');
+      return;
+    }
+    context.pop();
+  }
+
   void _dismissKeyboard() {
     FocusManager.instance.primaryFocus?.unfocus();
   }
@@ -824,7 +835,7 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
             ? ''
             : '${data.chargeMoney}元\n卡内余额: ${data.money}元',
         buttonText: '确认',
-        onButtonTap: () => context.pop(),
+        onButtonTap: _finishSuccess,
       );
     }
     return _PayStateView(
@@ -838,7 +849,9 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
 }
 
 class _PayPasswordDialog extends StatefulWidget {
-  const _PayPasswordDialog();
+  const _PayPasswordDialog({required this.onVerify});
+
+  final Future<String?> Function(String password) onVerify;
 
   @override
   State<_PayPasswordDialog> createState() => _PayPasswordDialogState();
@@ -846,6 +859,7 @@ class _PayPasswordDialog extends StatefulWidget {
 
 class _PayPasswordDialogState extends State<_PayPasswordDialog> {
   final _controller = TextEditingController();
+  bool _submitting = false;
 
   @override
   void dispose() {
@@ -853,10 +867,23 @@ class _PayPasswordDialogState extends State<_PayPasswordDialog> {
     super.dispose();
   }
 
-  void _confirm() {
+  Future<void> _confirm() async {
+    if (_submitting) return;
     final value = _controller.text.trim();
-    if (value.length != 4) return;
-    Navigator.of(context).pop(value);
+    if (value.length != 4) {
+      AppToast.show(context, '请输入密码');
+      return;
+    }
+    setState(() => _submitting = true);
+    final errorMessage = await widget.onVerify(value);
+    if (!mounted) return;
+    if (errorMessage == null) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+    AppToast.show(context, errorMessage);
+    _controller.clear();
+    setState(() => _submitting = false);
   }
 
   @override
@@ -884,12 +911,14 @@ class _PayPasswordDialogState extends State<_PayPasswordDialog> {
       actionsAlignment: MainAxisAlignment.center,
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
           child: const Text('取消'),
         ),
         FilledButton(
-          onPressed: _controller.text.length == 4 ? _confirm : null,
-          child: const Text('确认'),
+          onPressed: _controller.text.length == 4 && !_submitting
+              ? _confirm
+              : null,
+          child: Text(_submitting ? '验证中...' : '确认'),
         ),
       ],
     );
@@ -1327,7 +1356,7 @@ class _RemarkSheetState extends State<_RemarkSheet> {
                                 padding: const EdgeInsets.fromLTRB(
                                   12,
                                   12,
-                                  12,
+                                  38,
                                   28,
                                 ),
                                 child: TextField(
@@ -1357,6 +1386,32 @@ class _RemarkSheetState extends State<_RemarkSheet> {
                                       ?.unfocus(),
                                 ),
                               ),
+                              if (_length > 0)
+                                Positioned(
+                                  top: 8,
+                                  right: 8,
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () {
+                                      _controller.clear();
+                                      FocusScope.of(context).unfocus();
+                                    },
+                                    child: Container(
+                                      width: 24,
+                                      height: 24,
+                                      alignment: Alignment.center,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFCCCCCC),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.close,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               Positioned(
                                 right: 12,
                                 bottom: 10,
@@ -1378,7 +1433,9 @@ class _RemarkSheetState extends State<_RemarkSheet> {
                     behavior: HitTestBehavior.opaque,
                     onTap: () {
                       FocusScope.of(context).unfocus();
-                      Navigator.of(context).pop(_controller.text);
+                      Navigator.of(
+                        context,
+                      ).pop(_cleanRemarkForSubmit(_controller.text));
                     },
                     child: Container(
                       height: 40,
@@ -1402,6 +1459,23 @@ class _RemarkSheetState extends State<_RemarkSheet> {
       ),
     );
   }
+}
+
+String _cleanRemarkForSubmit(String value) {
+  final buffer = StringBuffer();
+  for (final rune in value.trim().runes) {
+    if (_isUnsupportedRemarkRune(rune)) continue;
+    buffer.writeCharCode(rune);
+  }
+  return buffer.toString();
+}
+
+bool _isUnsupportedRemarkRune(int rune) {
+  if (rune > 0xFFFF) return true;
+  if (rune >= 0xFE00 && rune <= 0xFE0F) return true;
+  if (rune >= 0x2600 && rune <= 0x27BF) return true;
+  if (rune >= 0x2300 && rune <= 0x23FF) return true;
+  return false;
 }
 
 class _DiscountTypeSheet extends StatelessWidget {

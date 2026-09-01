@@ -305,56 +305,74 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 38),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      GestureDetector(
-                        onTap: () => setState(() => _agreed = !_agreed),
-                        child: Container(
-                          width: 16,
-                          height: 16,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: _agreed
-                                ? AppTheme.brand
-                                : Colors.transparent,
-                            shape: BoxShape.circle,
-                            border: _agreed
-                                ? null
-                                : Border.all(color: const Color(0xFF999999)),
+                  const SizedBox(height: 26),
+                  SizedBox(
+                    height: 44,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => setState(() => _agreed = !_agreed),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 16,
+                                  height: 16,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: _agreed
+                                        ? AppTheme.brand
+                                        : Colors.transparent,
+                                    shape: BoxShape.circle,
+                                    border: _agreed
+                                        ? null
+                                        : Border.all(
+                                            color: const Color(0xFF999999),
+                                          ),
+                                  ),
+                                  child: _agreed
+                                      ? const Icon(
+                                          Icons.check,
+                                          size: 13,
+                                          color: Colors.white,
+                                        )
+                                      : null,
+                                ),
+                                const SizedBox(width: 4),
+                                const Text(
+                                  '同意',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Color(0xFF999999),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          child: _agreed
-                              ? const Icon(
-                                  Icons.check,
-                                  size: 13,
-                                  color: Colors.white,
-                                )
-                              : null,
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      GestureDetector(
-                        onTap: () => setState(() => _agreed = !_agreed),
-                        child: const Text(
-                          '同意',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF999999),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () =>
+                              context.push('/privacy-agreement?type=4'),
+                          child: const Padding(
+                            padding: EdgeInsets.fromLTRB(0, 10, 12, 10),
+                            child: Text(
+                              '《法律条款及隐私政策》',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: AppTheme.brand,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      GestureDetector(
-                        onTap: () => context.push('/privacy-agreement?type=4'),
-                        child: const Text(
-                          '《法律条款及隐私政策》',
-                          style: TextStyle(fontSize: 14, color: AppTheme.brand),
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 13),
+                  const SizedBox(height: 7),
                   _GradientButton(
                     text: _isSubmitting ? '登录中...' : '登录',
                     enabled: !_isSubmitting,
