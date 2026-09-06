@@ -19,6 +19,7 @@ import '../../features/member/presentation/shop_member_pages.dart';
 import '../../features/profile/presentation/profile_page.dart';
 import '../../features/profile/presentation/sales_data_page.dart';
 import '../../features/profile/presentation/profile_sub_pages.dart';
+import '../../features/seal_debug/presentation/seal_debug_page.dart';
 import '../../features/shop_manager/presentation/shop_manager_page.dart';
 import '../../features/shell/presentation/app_shell.dart';
 import '../../features/splash/presentation/ad_webview_page.dart';
@@ -136,6 +137,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/service',
         builder: (context, state) => const ServicePage(),
+      ),
+      GoRoute(
+        path: '/seal-debug',
+        builder: (context, state) => const SealDebugPage(),
       ),
       GoRoute(
         path: '/sales-data',

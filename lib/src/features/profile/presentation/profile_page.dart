@@ -227,6 +227,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         _ProfileMenuGroup(
                           items: [
                             _ProfileMenuItem(
+                              icon: 'assets/static/image/static.png',
+                              title: '印章测试',
+                              onTap: () => context.push('/seal-debug'),
+                            ),
+                            _ProfileMenuItem(
                               icon: 'assets/static/image/xs.png',
                               title: '销售数据',
                               onTap: () => _pushLoginRequired('/sales-data'),
