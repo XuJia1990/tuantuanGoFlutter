@@ -171,7 +171,7 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
         _payLoading = false;
         _payFailed = false;
       });
-      context.push(
+      context.replace(
         Uri(
           path: '/coupon-order-detail',
           queryParameters: {
@@ -243,7 +243,7 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
           _payLoading = false;
           _payFailed = false;
         });
-        context.push(
+        context.replace(
           Uri(
             path: '/coupon-order-detail',
             queryParameters: {

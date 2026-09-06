@@ -119,7 +119,7 @@ class _CouponOrderDetailPageState extends ConsumerState<CouponOrderDetailPage> {
   void _goShop() {
     final shopId = _detail?.shopId ?? '';
     if (shopId.isEmpty) return;
-    context.push('/shop/$shopId');
+    context.go('/shop/$shopId');
   }
 
   void _handleBack() {
