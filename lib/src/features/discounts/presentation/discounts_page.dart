@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../core/constants/app_assets.dart';
+import '../../../core/storage/app_storage.dart';
+import '../../../core/ui/app_toast.dart';
 import '../../../shared/widgets/cached_image.dart';
 import '../../home/data/home_models.dart';
 import '../../home/data/home_repository.dart';
@@ -22,6 +24,7 @@ class _DiscountsPageState extends ConsumerState<DiscountsPage> {
   final Map<String, _CouponPageState> _couponStates = {};
 
   List<Station> _stations = const [];
+  Offset? _myCouponsButtonOffset;
 
   var _currentStation = 0;
   var _isBootstrapping = true;
@@ -220,25 +223,84 @@ class _DiscountsPageState extends ConsumerState<DiscountsPage> {
     );
   }
 
+  Future<void> _openMyCoupons() async {
+    if (!await ref.read(appStorageProvider).isSignedIn()) {
+      if (!mounted) return;
+      AppToast.show(context, '未登录，请先登录');
+      context.push('/login');
+      return;
+    }
+    if (mounted) context.push('/purchased-coupons');
+  }
+
+  Offset _defaultMyCouponsButtonOffset(Size size, EdgeInsets padding) {
+    return Offset(
+      size.width - _myCouponsFloatSize - 12,
+      size.height - padding.bottom - _myCouponsFloatSize - 88,
+    );
+  }
+
+  Offset _clampMyCouponsButtonOffset(
+    Offset offset,
+    Size size,
+    EdgeInsets padding,
+  ) {
+    final rightX = size.width - _myCouponsFloatSize - 12;
+    final minY = padding.top + 8;
+    final maxY = size.height - padding.bottom - _myCouponsFloatSize - 14;
+    return Offset(
+      rightX,
+      offset.dy.clamp(minY, maxY).toDouble(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.pageBg,
-      body: Stack(
-        children: [
-          Column(
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final size = Size(constraints.maxWidth, constraints.maxHeight);
+          final padding = MediaQuery.paddingOf(context);
+          final buttonOffset = _clampMyCouponsButtonOffset(
+            _myCouponsButtonOffset ??
+                _defaultMyCouponsButtonOffset(size, padding),
+            size,
+            padding,
+          );
+          return Stack(
             children: [
-              _DiscountHeader(
-                stations: _stations,
-                currentStation: _currentStation,
-                onSearchTap: () => context.push('/search'),
-                onStationTap: _selectStation,
+              Column(
+                children: [
+                  _DiscountHeader(
+                    stations: _stations,
+                    currentStation: _currentStation,
+                    onSearchTap: () => context.push('/search'),
+                    onStationTap: _selectStation,
+                  ),
+                  Expanded(child: _buildBody()),
+                ],
               ),
-              Expanded(child: _buildBody()),
+              Positioned(
+                left: buttonOffset.dx.roundToDouble(),
+                top: buttonOffset.dy.roundToDouble(),
+                child: _MyCouponsFloatButton(
+                  onTap: _openMyCoupons,
+                  onPanUpdate: (details) {
+                    setState(() {
+                      _myCouponsButtonOffset = _clampMyCouponsButtonOffset(
+                        buttonOffset + Offset(0, details.delta.dy),
+                        size,
+                        padding,
+                      );
+                    });
+                  },
+                ),
+              ),
+              if (_isBootstrapping) const _DiscountLoading(),
             ],
-          ),
-          if (_isBootstrapping) const _DiscountLoading(),
-        ],
+          );
+        },
       ),
     );
   }
@@ -322,6 +384,50 @@ class _CouponPageState {
 }
 
 const _copySentinel = Object();
+const _myCouponsFloatSize = 44.0;
+
+class _MyCouponsFloatButton extends StatelessWidget {
+  const _MyCouponsFloatButton({
+    required this.onTap,
+    required this.onPanUpdate,
+  });
+
+  final VoidCallback onTap;
+  final GestureDragUpdateCallback onPanUpdate;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      onPanUpdate: onPanUpdate,
+      child: Container(
+        width: _myCouponsFloatSize,
+        height: _myCouponsFloatSize,
+        decoration: BoxDecoration(
+          gradient: AppTheme.brandGradient,
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x33000000),
+              blurRadius: 10,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Image.asset(
+            AppAssets.tabDiscount,
+            width: 24,
+            height: 24,
+            color: Colors.white,
+            filterQuality: FilterQuality.none,
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _DiscountStationPage extends StatelessWidget {
   const _DiscountStationPage({

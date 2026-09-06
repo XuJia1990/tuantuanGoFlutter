@@ -199,7 +199,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                           items: [
                             _ProfileMenuItem(
                               icon: 'assets/static/image/my-1.png',
-                              title: '已购券包',
+                              title: '我的优惠券',
                               onTap: () =>
                                   _pushLoginRequired('/purchased-coupons'),
                             ),

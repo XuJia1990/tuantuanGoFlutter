@@ -1664,7 +1664,7 @@ class _PurchasedCouponsPageState extends ConsumerState<PurchasedCouponsPage> {
   @override
   Widget build(BuildContext context) {
     return _ProfileScaffold(
-      title: '我的卷包',
+      title: '我的优惠券',
       child: Column(
         children: [
           _Tabs(

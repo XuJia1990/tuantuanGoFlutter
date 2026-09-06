@@ -162,7 +162,7 @@ class _CouponOrderDetailPageState extends ConsumerState<CouponOrderDetailPage> {
             icon: const Icon(Icons.chevron_left, color: Colors.white, size: 34),
           ),
           title: Text(
-            _type == 1 ? '购买成功' : '我的卷包',
+            _type == 1 ? '购买成功' : '我的优惠券',
             style: const TextStyle(color: Colors.white),
           ),
           centerTitle: true,
