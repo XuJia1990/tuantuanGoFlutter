@@ -181,6 +181,15 @@ class _ShopDetailPageState extends ConsumerState<ShopDetailPage> {
     context.push('/coupon/${coupon.couponId}?title=$encodedTitle');
   }
 
+  void _handleBack() {
+    final router = GoRouter.of(context);
+    if (router.canPop()) {
+      router.pop();
+      return;
+    }
+    router.go('/');
+  }
+
   void _toast(String message) {
     if (!mounted) return;
     AppToast.show(context, message);
@@ -189,38 +198,44 @@ class _ShopDetailPageState extends ConsumerState<ShopDetailPage> {
   @override
   Widget build(BuildContext context) {
     final shop = _shop;
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          if (_isLoading)
-            const _DetailLoading()
-          else if (_error != null || shop == null)
-            _DetailError(message: _error ?? '页面不存在', onRetry: _loadInitial)
-          else
-            _buildContent(shop),
-          Positioned(
-            top: MediaQuery.paddingOf(context).top + 12,
-            left: 16,
-            child: _CircleButton(
-              icon: Icons.chevron_left,
-              onTap: Navigator.of(context).pop,
-            ),
-          ),
-        ],
-      ),
-      bottomNavigationBar: shop == null
-          ? null
-          : _BottomActions(
-              isFav: shop.isFav,
-              onFav: _toggleFav,
-              onScore: () => context.push(
-                Uri(
-                  path: '/rating',
-                  queryParameters: {'shopId': shop.shopId, 'name': shop.name},
-                ).toString(),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _handleBack();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: Stack(
+          children: [
+            if (_isLoading)
+              const _DetailLoading()
+            else if (_error != null || shop == null)
+              _DetailError(message: _error ?? '页面不存在', onRetry: _loadInitial)
+            else
+              _buildContent(shop),
+            Positioned(
+              top: MediaQuery.paddingOf(context).top + 12,
+              left: 16,
+              child: _CircleButton(
+                icon: Icons.chevron_left,
+                onTap: _handleBack,
               ),
             ),
+          ],
+        ),
+        bottomNavigationBar: shop == null
+            ? null
+            : _BottomActions(
+                isFav: shop.isFav,
+                onFav: _toggleFav,
+                onScore: () => context.push(
+                  Uri(
+                    path: '/rating',
+                    queryParameters: {'shopId': shop.shopId, 'name': shop.name},
+                  ).toString(),
+                ),
+              ),
+      ),
     );
   }
 
