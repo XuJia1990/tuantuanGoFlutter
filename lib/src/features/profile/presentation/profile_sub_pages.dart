@@ -2747,11 +2747,19 @@ class _PurchasedCouponCard extends StatelessWidget {
                                               ),
                                             ],
                                           ),
-                                          Text(
-                                            '${item.validPeriod}到期',
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              color: AppTheme.textSecondary,
+                                          SizedBox(
+                                            width: double.infinity,
+                                            child: FittedBox(
+                                              alignment: Alignment.centerLeft,
+                                              fit: BoxFit.scaleDown,
+                                              child: Text(
+                                                '${item.validPeriod}到期',
+                                                maxLines: 1,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: AppTheme.textSecondary,
+                                                ),
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -3594,11 +3602,25 @@ BoxDecoration _inputDecoration() {
 }
 
 String _formatDate(dynamic value) {
-  final text = value?.toString() ?? '';
-  final date = DateTime.tryParse(text);
-  if (date == null) return text;
-  return '${date.year}-${date.month}-${date.day} ';
+  final raw = value?.toString().trim() ?? '';
+  if (raw.isEmpty) return '';
+
+  DateTime? date;
+  final timestamp = int.tryParse(raw);
+  if (timestamp != null) {
+    date = DateTime.fromMillisecondsSinceEpoch(
+      raw.length >= 13 ? timestamp : timestamp * 1000,
+    ).toLocal();
+  } else {
+    final normalized = raw.contains('T') ? raw : raw.replaceFirst(' ', 'T');
+    date = DateTime.tryParse(normalized)?.toLocal();
+  }
+
+  if (date == null) return raw.split(' ').first;
+  return '${date.year}-${_twoDigits(date.month)}-${_twoDigits(date.day)}';
 }
+
+String _twoDigits(int value) => value.toString().padLeft(2, '0');
 
 List<String> _agreementSections(int type) {
   return privacyAgreementTexts[type] ?? privacyAgreementTexts[4]!;

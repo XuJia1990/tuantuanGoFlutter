@@ -342,11 +342,19 @@ class _OrderContent extends StatelessWidget {
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                Text(
-                                  '${detail.validPeriod}到期',
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    color: AppTheme.textSecondary,
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: FittedBox(
+                                    alignment: Alignment.centerLeft,
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      '${detail.validPeriod}到期',
+                                      maxLines: 1,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: AppTheme.textSecondary,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -358,6 +366,21 @@ class _OrderContent extends StatelessWidget {
                           ),
                         ],
                       ),
+                      if (detail.isRedeemCodePayment) ...[
+                        const SizedBox(height: 14),
+                        const SizedBox(
+                          width: double.infinity,
+                          child: Text(
+                            '⚠️ 请注意\n到店后请在点餐前出示优惠券并告知服务员。\n结账时出示无效，优惠不予享受。',
+                            style: TextStyle(
+                              fontSize: 13,
+                              height: 1.4,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.brand,
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 26),
                       const Text(
                         '核销码',
@@ -366,12 +389,12 @@ class _OrderContent extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 4),
                       Stack(
                         alignment: Alignment.center,
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(8),
                             color: Colors.white,
                             child: QrImageView(
                               data: qrData,
@@ -652,9 +675,11 @@ class _CouponOrderDetail {
   final int writeoffStatus;
 
   String get tradeMethodText {
-    if (tradMethod == '01') return '兑换码支付';
+    if (isRedeemCodePayment) return '兑换码支付';
     return '微信支付';
   }
+
+  bool get isRedeemCodePayment => tradMethod == '01';
 
   factory _CouponOrderDetail.fromJson(Map<String, dynamic> json) {
     final images = json['couponImageUrlList'];
@@ -672,7 +697,7 @@ class _CouponOrderDetail {
           : _string(json['couponImage']),
       couponPrice: _string(json['couponPrice']),
       oriPrice: _string(json['oriPrice']),
-      validPeriod: _formatDate(json['validPeriod']),
+      validPeriod: _formatDateOnly(json['validPeriod']),
       discountRate: rate <= 1 ? (rate * 100).toInt() : rate.toInt(),
       tradMethod: _string(json['tradMethod']),
       orderTime: _formatDate(json['orderTime']),
@@ -698,11 +723,32 @@ String _formatDate(dynamic value) {
   return _formatDateTime(date.toLocal());
 }
 
+String _formatDateOnly(dynamic value) {
+  final raw = value?.toString().trim() ?? '';
+  if (raw.isEmpty) return '';
+
+  DateTime? date;
+  final timestamp = int.tryParse(raw);
+  if (timestamp != null) {
+    date = DateTime.fromMillisecondsSinceEpoch(
+      raw.length >= 13 ? timestamp : timestamp * 1000,
+    ).toLocal();
+  } else {
+    final normalized = raw.contains('T') ? raw : raw.replaceFirst(' ', 'T');
+    date = DateTime.tryParse(normalized)?.toLocal();
+  }
+
+  if (date == null) return raw.split(' ').first;
+  return '${date.year}-${_twoDigits(date.month)}-${_twoDigits(date.day)}';
+}
+
 String _formatDateTime(DateTime date) {
   String two(int value) => value.toString().padLeft(2, '0');
   return '${date.year}-${two(date.month)}-${two(date.day)} '
       '${two(date.hour)}:${two(date.minute)}:${two(date.second)}';
 }
+
+String _twoDigits(int value) => value.toString().padLeft(2, '0');
 
 String _mobileFromUserDetail(String? raw) {
   if (raw == null || raw.isEmpty) return '';
