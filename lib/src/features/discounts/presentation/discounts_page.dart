@@ -802,7 +802,7 @@ class _DiscountCouponCard extends StatelessWidget {
                           child: Align(
                             alignment: Alignment.centerRight,
                             child: Text(
-                              '${coupon.categoryName} | ${coupon.distance}m',
+                              '${coupon.categoryName} | ${_distanceKm(coupon.distance)}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               textAlign: TextAlign.right,
@@ -1094,4 +1094,10 @@ const _couponPalettes = [
 String _money(double value) {
   if (value % 1 == 0) return value.toStringAsFixed(0);
   return value.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '');
+}
+
+String _distanceKm(int meters) {
+  final km = meters / 1000;
+  final text = km >= 100 ? km.toStringAsFixed(0) : km.toStringAsFixed(1);
+  return '${text.replaceFirst(RegExp(r'\.0$'), '')}km';
 }
