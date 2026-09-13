@@ -248,10 +248,7 @@ class _DiscountsPageState extends ConsumerState<DiscountsPage> {
     final rightX = size.width - _myCouponsFloatSize - 12;
     final minY = padding.top + 8;
     final maxY = size.height - padding.bottom - _myCouponsFloatSize - 14;
-    return Offset(
-      rightX,
-      offset.dy.clamp(minY, maxY).toDouble(),
-    );
+    return Offset(rightX, offset.dy.clamp(minY, maxY).toDouble());
   }
 
   @override
@@ -384,13 +381,10 @@ class _CouponPageState {
 }
 
 const _copySentinel = Object();
-const _myCouponsFloatSize = 44.0;
+const _myCouponsFloatSize = 48.0;
 
 class _MyCouponsFloatButton extends StatelessWidget {
-  const _MyCouponsFloatButton({
-    required this.onTap,
-    required this.onPanUpdate,
-  });
+  const _MyCouponsFloatButton({required this.onTap, required this.onPanUpdate});
 
   final VoidCallback onTap;
   final GestureDragUpdateCallback onPanUpdate;
@@ -406,26 +400,132 @@ class _MyCouponsFloatButton extends StatelessWidget {
         height: _myCouponsFloatSize,
         decoration: BoxDecoration(
           gradient: AppTheme.brandGradient,
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(17),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x33000000),
-              blurRadius: 10,
-              offset: Offset(0, 4),
+              color: Color(0x3DFE4D00),
+              blurRadius: 14,
+              offset: Offset(0, 6),
+            ),
+            BoxShadow(
+              color: Color(0x24000000),
+              blurRadius: 8,
+              offset: Offset(0, 2),
             ),
           ],
         ),
-        child: Center(
-          child: Image.asset(
-            AppAssets.tabDiscount,
-            width: 24,
-            height: 24,
-            color: Colors.white,
-            filterQuality: FilterQuality.none,
-          ),
+        child: Stack(
+          children: const [
+            Positioned(left: 7, top: 6, child: _FloatButtonHighlight()),
+            Center(
+              child: SizedBox(
+                width: 30,
+                height: 30,
+                child: CustomPaint(painter: _FloatingCardPackIconPainter()),
+              ),
+            ),
+          ],
         ),
       ),
     );
+  }
+}
+
+class _FloatButtonHighlight extends StatelessWidget {
+  const _FloatButtonHighlight();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 13,
+      height: 7,
+      decoration: BoxDecoration(
+        color: const Color(0x4DFFFFFF),
+        borderRadius: BorderRadius.circular(999),
+      ),
+    );
+  }
+}
+
+class _FloatingCardPackIconPainter extends CustomPainter {
+  const _FloatingCardPackIconPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final radius = Radius.circular(size.width * 0.11);
+    final backCard = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        size.width * 0.27,
+        size.height * 0.14,
+        size.width * 0.52,
+        size.height * 0.42,
+      ),
+      radius,
+    );
+
+    final middleCard = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        size.width * 0.19,
+        size.height * 0.27,
+        size.width * 0.6,
+        size.height * 0.44,
+      ),
+      radius,
+    );
+    final frontCardRect = Rect.fromLTWH(
+      size.width * 0.11,
+      size.height * 0.42,
+      size.width * 0.7,
+      size.height * 0.4,
+    );
+    final frontCard = RRect.fromRectAndRadius(frontCardRect, radius);
+
+    canvas.drawRRect(backCard, Paint()..color = const Color(0x99FFFFFF));
+    canvas.drawRRect(middleCard, Paint()..color = const Color(0xFFFFE7D7));
+    canvas.drawRRect(frontCard, Paint()..color = Colors.white);
+
+    final detailPaint = Paint()
+      ..color = const Color(0xFFFE4D00)
+      ..strokeWidth = size.width * 0.055
+      ..strokeCap = StrokeCap.round;
+    final lineStart = Offset(
+      frontCardRect.left + size.width * 0.18,
+      frontCardRect.top + size.height * 0.16,
+    );
+    canvas.drawLine(
+      lineStart,
+      lineStart.translate(size.width * 0.34, 0),
+      detailPaint,
+    );
+
+    final dotPaint = Paint()..color = const Color(0xFFFF9809);
+    canvas.drawCircle(
+      Offset(
+        frontCardRect.left + size.width * 0.17,
+        frontCardRect.bottom - size.height * 0.13,
+      ),
+      size.width * 0.055,
+      dotPaint,
+    );
+    canvas.drawLine(
+      Offset(
+        frontCardRect.left + size.width * 0.29,
+        frontCardRect.bottom - size.height * 0.13,
+      ),
+      Offset(
+        frontCardRect.left + size.width * 0.5,
+        frontCardRect.bottom - size.height * 0.13,
+      ),
+      Paint()
+        ..color = const Color(0x66FE4D00)
+        ..strokeWidth = size.width * 0.04
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _FloatingCardPackIconPainter oldDelegate) {
+    return false;
   }
 }
 
@@ -782,14 +882,18 @@ class _DiscountCouponCard extends StatelessWidget {
                           bottom: 0,
                           child: Align(
                             alignment: Alignment.centerLeft,
-                            child: Text(
-                              coupon.shopName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                coupon.shopName,
+                                maxLines: 1,
+                                softWrap: false,
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                           ),
@@ -801,14 +905,18 @@ class _DiscountCouponCard extends StatelessWidget {
                           width: 96,
                           child: Align(
                             alignment: Alignment.centerRight,
-                            child: Text(
-                              '${coupon.categoryName} | ${_distanceKm(coupon.distance)}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.right,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                color: Colors.white,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                '${coupon.categoryName} | ${_distanceKm(coupon.distance)}',
+                                maxLines: 1,
+                                softWrap: false,
+                                textAlign: TextAlign.right,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                           ),
