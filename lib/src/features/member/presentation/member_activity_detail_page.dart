@@ -764,7 +764,6 @@ class _RewardRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final available = reward.claimable && !reward.claimed && !claiming;
-    final unreached = !reward.claimable && !reward.claimed;
     final content = Row(
       children: [
         Expanded(
@@ -775,17 +774,13 @@ class _RewardRow extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
-                  color: unreached || reward.claimed
-                      ? const Color(0xFFF1F1F1)
-                      : const Color(0xFFFFF0E8),
+                  color: const Color(0xFFFFF0E8),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
                   '${reward.requiredStampNo}枚印章可领取',
-                  style: TextStyle(
-                    color: unreached || reward.claimed
-                        ? const Color(0xFF999999)
-                        : const Color(0xFFFF671F),
+                  style: const TextStyle(
+                    color: Color(0xFFFF671F),
                     fontSize: 12,
                     height: 1,
                     fontWeight: FontWeight.w500,
@@ -797,10 +792,8 @@ class _RewardRow extends StatelessWidget {
                 reward.name.isEmpty ? '活动奖品' : reward.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: unreached || reward.claimed
-                      ? const Color(0xFF888888)
-                      : const Color(0xFF222222),
+                style: const TextStyle(
+                  color: Color(0xFF222222),
                   fontSize: 16,
                   height: 1,
                   fontWeight: FontWeight.w700,
@@ -808,31 +801,23 @@ class _RewardRow extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                reward.claimed
-                    ? '优惠券已领取'
-                    : claiming
-                    ? '领取中...'
-                    : unreached
-                    ? '尚未达到领取条件'
-                    : reward.content.isEmpty
-                    ? '点击领取优惠券'
-                    : reward.content,
+                reward.content.isEmpty ? '点击领取优惠券' : reward.content,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: available
-                      ? const Color(0xFFFF5A19)
-                      : const Color(0xFF999999),
+                style: const TextStyle(
+                  color: Color(0xFF999999),
                   fontSize: 12,
                   height: 1,
-                  fontWeight: available ? FontWeight.w600 : FontWeight.w400,
+                  fontWeight: FontWeight.w400,
                 ),
               ),
+              const SizedBox(height: 10),
+              _RewardClaimStatusBadge(reward: reward, claiming: claiming),
             ],
           ),
         ),
         const SizedBox(width: 12),
-        _RewardImage(reward: reward, unreached: unreached),
+        _RewardImage(reward: reward),
       ],
     );
 
@@ -846,18 +831,80 @@ class _RewardRow extends StatelessWidget {
           decoration: const BoxDecoration(
             border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE))),
           ),
-          child: unreached ? Opacity(opacity: 0.58, child: content) : content,
+          child: content,
         ),
       ),
     );
   }
 }
 
-class _RewardImage extends StatelessWidget {
-  const _RewardImage({required this.reward, required this.unreached});
+class _RewardClaimStatusBadge extends StatelessWidget {
+  const _RewardClaimStatusBadge({required this.reward, required this.claiming});
 
   final MemberActivityReward reward;
-  final bool unreached;
+  final bool claiming;
+
+  @override
+  Widget build(BuildContext context) {
+    final claimed = reward.claimed;
+    final unreached = !reward.claimable && !claimed;
+    final text = claimed
+        ? '已领取'
+        : claiming
+        ? '领取中...'
+        : unreached
+        ? '未达成'
+        : '立即领取';
+    final icon = claimed
+        ? Icons.check_circle
+        : unreached
+        ? Icons.lock
+        : null;
+
+    final foreground = claimed
+        ? const Color(0xFFFF671F)
+        : unreached
+        ? Colors.white
+        : Colors.white;
+    final background = claimed
+        ? const Color(0xFFFFF0E8)
+        : unreached
+        ? const Color(0xFFFFB15C)
+        : const Color(0xFFFF8A00);
+
+    return Container(
+      height: 22,
+      padding: EdgeInsets.only(left: icon == null ? 12 : 8, right: 12),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(11),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: foreground),
+            const SizedBox(width: 3),
+          ],
+          Text(
+            text,
+            style: TextStyle(
+              color: foreground,
+              fontSize: 12,
+              height: 1,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RewardImage extends StatelessWidget {
+  const _RewardImage({required this.reward});
+
+  final MemberActivityReward reward;
 
   @override
   Widget build(BuildContext context) {
@@ -873,67 +920,7 @@ class _RewardImage extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: SizedBox(
-        width: 121,
-        height: 80,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (unreached)
-              ColorFiltered(
-                colorFilter: const ColorFilter.matrix(<double>[
-                  0.2126,
-                  0.7152,
-                  0.0722,
-                  0,
-                  0,
-                  0.2126,
-                  0.7152,
-                  0.0722,
-                  0,
-                  0,
-                  0.2126,
-                  0.7152,
-                  0.0722,
-                  0,
-                  0,
-                  0,
-                  0,
-                  0,
-                  1,
-                  0,
-                ]),
-                child: image,
-              )
-            else
-              image,
-            if (reward.claimed) ...[
-              const ColoredBox(color: Color(0x73000000)),
-              Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xD9FFFFFF),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Text(
-                    '已领取',
-                    style: TextStyle(
-                      color: Color(0xFF777777),
-                      fontSize: 12,
-                      height: 1,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
+      child: SizedBox(width: 121, height: 80, child: image),
     );
   }
 }
