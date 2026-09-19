@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,10 +28,24 @@ class AppStorage {
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
 
   Future<String?> getAccessToken() async {
-    final rawUser = (await _prefs).getString(StorageKeys.user);
+    final prefs = await _prefs;
+    final rawUser = prefs.getString(StorageKeys.user);
     if (rawUser == null || rawUser.isEmpty) return null;
-    final match = RegExp(r'"accessToken"\s*:\s*"([^"]+)"').firstMatch(rawUser);
-    return match?.group(1);
+    try {
+      final decoded = jsonDecode(rawUser);
+      if (decoded is! Map) return null;
+      final expiresTime = _asInt(decoded['expiresTime']);
+      if (expiresTime != null &&
+          expiresTime > 0 &&
+          DateTime.now().millisecondsSinceEpoch >= expiresTime) {
+        await _clearAuth(prefs);
+        return null;
+      }
+      final token = decoded['accessToken']?.toString();
+      return token == null || token.isEmpty ? null : token;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<String?> getUserId() async {
@@ -106,10 +121,20 @@ class AppStorage {
 
   Future<void> clearAuth() async {
     final prefs = await _prefs;
+    await _clearAuth(prefs);
+  }
+
+  Future<void> _clearAuth(SharedPreferences prefs) async {
     await prefs.remove(StorageKeys.user);
     await prefs.remove(StorageKeys.userDetail);
     await prefs.remove(StorageKeys.userAvatar);
     await prefs.remove(StorageKeys.isGroupManager);
+  }
+
+  int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
   }
 
   String _generateDeviceId() {

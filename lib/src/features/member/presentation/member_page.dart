@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import '../../../core/storage/app_storage.dart';
 import '../../../core/ui/app_toast.dart';
 import '../../../shared/widgets/cached_image.dart';
 import '../../home/data/home_models.dart';
+import '../data/member_activity_repository.dart';
 
 class MemberPage extends ConsumerStatefulWidget {
   const MemberPage({super.key});
@@ -103,6 +105,7 @@ class _MemberPageState extends ConsumerState<MemberPage> {
         _loading = false;
         _loadingMore = false;
       });
+      unawaited(_resolveActivityFlags(page.list));
     } catch (_) {
       if (!mounted) return;
       _toast('获取失败,请检查网络连接');
@@ -112,6 +115,40 @@ class _MemberPageState extends ConsumerState<MemberPage> {
         _loadingMore = false;
       });
     }
+  }
+
+  Future<void> _resolveActivityFlags(List<MemberCardInfo> cards) async {
+    final shopIds = cards
+        .expand((card) => card.shopInfoList)
+        .map((shop) => shop.shopId)
+        .where((shopId) => shopId.isNotEmpty)
+        .toSet();
+    if (shopIds.isEmpty) return;
+
+    final repository = ref.read(memberActivityRepositoryProvider);
+    final entries = await Future.wait([
+      for (final shopId in shopIds)
+        repository
+            .listByShop(shopId)
+            .then<MapEntry<String, bool?>>(
+              (activities) => MapEntry(shopId, activities.isNotEmpty),
+            )
+            .catchError((_) => MapEntry<String, bool?>(shopId, null)),
+    ]);
+    if (!mounted) return;
+    final activityByShop = Map<String, bool?>.fromEntries(entries);
+    setState(() {
+      for (final card in cards) {
+        var hasActivity = false;
+        var resolvedAll = true;
+        for (final shop in card.shopInfoList) {
+          final result = activityByShop[shop.shopId];
+          if (result == true) hasActivity = true;
+          if (result == null) resolvedAll = false;
+        }
+        if (hasActivity || resolvedAll) card.hasActivity = hasActivity;
+      }
+    });
   }
 
   Future<void> _refresh() async {
@@ -157,6 +194,23 @@ class _MemberPageState extends ConsumerState<MemberPage> {
           'shops': jsonEncode(shops),
           'source': 'user',
           'allowRefund': '0',
+        },
+      ).toString(),
+      extra: shops,
+    );
+  }
+
+  void _goActivity(MemberCardInfo card) {
+    final shops = [
+      for (final shop in card.shopInfoList)
+        {'shopId': shop.shopId, 'name': shop.name, 'imageUrl': shop.imageUrl},
+    ];
+    context.push(
+      Uri(
+        path: '/member-activities',
+        queryParameters: {
+          'memberCardId': card.memberCardId,
+          'shops': jsonEncode(shops),
         },
       ).toString(),
       extra: shops,
@@ -230,6 +284,7 @@ class _MemberPageState extends ConsumerState<MemberPage> {
                           },
                           onRecord: _goRecord,
                           onRecharge: _goRecharge,
+                          onActivity: _goActivity,
                         );
                       },
                     ),
@@ -249,6 +304,7 @@ class _MemberCard extends StatelessWidget {
     required this.onToggleShopList,
     required this.onRecord,
     required this.onRecharge,
+    required this.onActivity,
   });
 
   final MemberCardInfo card;
@@ -256,6 +312,7 @@ class _MemberCard extends StatelessWidget {
   final VoidCallback onToggleShopList;
   final void Function(MemberCardInfo card) onRecord;
   final void Function(MemberCardInfo card) onRecharge;
+  final void Function(MemberCardInfo card) onActivity;
 
   @override
   Widget build(BuildContext context) {
@@ -300,6 +357,10 @@ class _MemberCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
+              if (card.hasActivity) ...[
+                _CardActionButton(text: '活动', onTap: () => onActivity(card)),
+                const SizedBox(width: 5),
+              ],
               _CardActionButton(text: '详情', onTap: () => onRecord(card)),
               const SizedBox(width: 5),
               _CardActionButton(text: '充值', onTap: () => onRecharge(card)),
@@ -368,18 +429,18 @@ class _CardActionButton extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        width: 65,
-        height: 30,
+        width: 56,
+        height: 28,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Text(
           text,
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.8),
-            fontSize: 15,
+            fontSize: 14,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -550,12 +611,14 @@ class MemberCardInfo {
     required this.memberCardId,
     required this.balanceText,
     required this.shopInfoList,
+    required this.hasActivity,
   });
 
   final String memberId;
   final String memberCardId;
   final String balanceText;
   final List<MemberShopInfo> shopInfoList;
+  bool hasActivity;
   bool showShop = false;
 
   factory MemberCardInfo.fromJson(Map<String, dynamic> json) {
@@ -564,6 +627,7 @@ class MemberCardInfo {
       memberId: json['memberId']?.toString() ?? '',
       memberCardId: json['memberCardId']?.toString() ?? '',
       balanceText: json['balance']?.toString() ?? '0',
+      hasActivity: _readHasActivity(json),
       shopInfoList: rawShops is List
           ? rawShops
                 .whereType<Map>()
@@ -575,6 +639,20 @@ class MemberCardInfo {
           : const [],
     );
   }
+}
+
+bool _readHasActivity(Map<String, dynamic> json) {
+  final value =
+      json['hasActivity'] ??
+      json['activityFlag'] ??
+      json['activityFlg'] ??
+      json['isActivity'] ??
+      json['activityStatus'] ??
+      json['activityCount'];
+  if (value is bool) return value;
+  if (value is num) return value > 0;
+  final text = value?.toString().trim().toLowerCase();
+  return text == '1' || text == 'true' || text == 'yes' || text == 'y';
 }
 
 class MemberShopInfo {

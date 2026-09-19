@@ -41,6 +41,13 @@ class TuanTuanEndpoints {
   static const writeOff = '/app-api/go/order-mgmt/updatewriteoffstatus';
 
   static const memberCardList = '/app-api/go/member-info/getMemberCardList';
+  static const activityList = '/app-api/go/activity/list';
+  static String activityDetail(String activityId) =>
+      '/app-api/go/activity/$activityId/detail';
+  static String activityStamp(String activityId) =>
+      '/app-api/go/activity/$activityId/stamp';
+  static String activityRewardClaim(String activityId, String rewardId) =>
+      '/app-api/go/activity/$activityId/reward/$rewardId/claim';
   static const shopMemberList = '/app-api/go/member-info/getShopMemberList';
   static const memberOrderList = '/app-api/go/member-order/getMemberOrderList';
   static const memberOrderListByShop =

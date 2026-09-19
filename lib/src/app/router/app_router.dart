@@ -12,6 +12,8 @@ import '../../features/home/presentation/rating_page.dart';
 import '../../features/home/presentation/search_page.dart';
 import '../../features/home/presentation/shop_detail_page.dart';
 import '../../features/home/presentation/submit_order_page.dart';
+import '../../features/member/presentation/member_activity_detail_page.dart';
+import '../../features/member/presentation/member_activity_list_page.dart';
 import '../../features/member/presentation/member_page.dart';
 import '../../features/member/presentation/member_recharge_page.dart';
 import '../../features/member/presentation/member_record_page.dart';
@@ -140,7 +142,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/seal-debug',
-        builder: (context, state) => const SealDebugPage(),
+        builder: (context, state) => SealDebugPage(extra: state.extra),
       ),
       GoRoute(
         path: '/sales-data',
@@ -198,6 +200,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/member-static',
         builder: (context, state) {
           return ShopMemberStaticPage(params: state.uri.queryParameters);
+        },
+      ),
+      GoRoute(
+        path: '/member-activities',
+        builder: (context, state) {
+          return MemberActivityListPage(
+            params: state.uri.queryParameters,
+            extraShops: state.extra,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/member-activity-detail',
+        builder: (context, state) {
+          return MemberActivityDetailPage(
+            extra: state.extra ?? state.uri.queryParameters,
+          );
         },
       ),
       GoRoute(
