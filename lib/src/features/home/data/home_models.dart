@@ -12,10 +12,11 @@ class ApiEnvelope<T> {
     T Function(dynamic raw) parseData,
   ) {
     if (raw is! Map) return const ApiEnvelope(code: null, message: '响应格式错误');
+    final rawData = raw['data'];
     return ApiEnvelope<T>(
       code: _asInt(raw['code']),
       message: raw['msg']?.toString() ?? raw['message']?.toString(),
-      data: raw.containsKey('data') ? parseData(raw['data']) : null,
+      data: rawData == null ? null : parseData(rawData),
     );
   }
 }

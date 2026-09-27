@@ -302,69 +302,81 @@ class _OrderContent extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 18),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _OrderImage(url: detail.couponImage, size: 84),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  detail.couponName,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w700,
+                      SizedBox(
+                        height: 84,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _OrderImage(url: detail.couponImage, size: 84),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Align(
+                                      alignment: Alignment.topLeft,
+                                      child: Text(
+                                        detail.couponName,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 17,
+                                          height: 1.1,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Text(
-                                      '￥${detail.couponPrice}',
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppTheme.brand,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '￥${detail.oriPrice}',
-                                      style: const TextStyle(
-                                        color: Color(0xFF999999),
-                                        decoration: TextDecoration.lineThrough,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: FittedBox(
+                                  const SizedBox(height: 3),
+                                  FittedBox(
                                     alignment: Alignment.centerLeft,
                                     fit: BoxFit.scaleDown,
-                                    child: Text(
-                                      '${detail.validPeriod}到期',
-                                      maxLines: 1,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        color: AppTheme.textSecondary,
-                                      ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          '￥${detail.couponPrice}',
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            height: 1,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppTheme.brand,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '￥${detail.oriPrice}',
+                                          style: const TextStyle(
+                                            height: 1,
+                                            color: Color(0xFF999999),
+                                            decoration:
+                                                TextDecoration.lineThrough,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${detail.validPeriod}到期',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      height: 1,
+                                      color: AppTheme.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          _DiscountBadge(
-                            rate: detail.discountRate,
-                            disabled: usedOrExpired,
-                          ),
-                        ],
+                            _DiscountBadge(
+                              rate: detail.discountRate,
+                              disabled: usedOrExpired,
+                            ),
+                          ],
+                        ),
                       ),
                       if (detail.isRedeemCodePayment) ...[
                         const SizedBox(height: 14),

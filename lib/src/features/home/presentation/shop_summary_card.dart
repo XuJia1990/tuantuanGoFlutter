@@ -137,7 +137,7 @@ class ShopSummaryCard extends StatelessWidget {
                   Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      '${shop.distance}m',
+                      _formatDistanceKm(shop.distance),
                       style: const TextStyle(
                         fontSize: 12,
                         color: AppTheme.textPrimary,
@@ -152,6 +152,11 @@ class ShopSummaryCard extends StatelessWidget {
       ),
     );
   }
+}
+
+String _formatDistanceKm(int meters) {
+  final text = (meters / 1000).toStringAsFixed(1);
+  return '${text.replaceFirst(RegExp(r'\.0$'), '')}km';
 }
 
 class EmptyState extends StatelessWidget {
