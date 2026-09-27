@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_theme.dart';
@@ -24,6 +26,10 @@ class SealDebugPage extends ConsumerStatefulWidget {
 }
 
 class _SealDebugPageState extends ConsumerState<SealDebugPage> {
+  static const _editingInteractionChannel = MethodChannel(
+    'com.tuantuango/system_editing_interactions',
+  );
+
   /// 逻辑坐标系（与 coordinateSystem=3 / H5 sealTest 一致），不是物理像素画布尺寸。
   static const _logicWidth = 800.0;
   static const _logicHeight = 600.0;
@@ -57,6 +63,25 @@ class _SealDebugPageState extends ConsumerState<SealDebugPage> {
         : const <String, dynamic>{};
     _activityId = data['activityId']?.toString() ?? '';
     _shopId = data['shopId']?.toString() ?? '';
+    unawaited(_setSystemEditingInteractionsDisabled(true));
+  }
+
+  @override
+  void dispose() {
+    unawaited(_setSystemEditingInteractionsDisabled(false));
+    super.dispose();
+  }
+
+  Future<void> _setSystemEditingInteractionsDisabled(bool disabled) async {
+    if (defaultTargetPlatform != TargetPlatform.iOS) return;
+    try {
+      await _editingInteractionChannel.invokeMethod<void>(
+        'setDisabled',
+        disabled,
+      );
+    } on MissingPluginException {
+      // Allows widget tests and older native shells to keep running.
+    }
   }
 
   void _handlePointerDown(int pointer, Offset localPosition, Size displaySize) {
@@ -188,7 +213,12 @@ class _SealDebugPageState extends ConsumerState<SealDebugPage> {
         ref.read(authRevisionProvider.notifier).bump();
         if (!mounted) return;
         AppToast.show(context, '登录状态已过期，请重新登录');
+        await _setSystemEditingInteractionsDisabled(false);
+        if (!mounted) return;
         await context.push('/login');
+        if (mounted) {
+          await _setSystemEditingInteractionsDisabled(true);
+        }
         return;
       }
       AppToast.show(context, _friendlyError(error));
