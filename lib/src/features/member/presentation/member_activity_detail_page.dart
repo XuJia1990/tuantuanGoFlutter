@@ -243,6 +243,7 @@ class _MemberActivityDetailPageState
               child: _ActivityHeader(
                 detail: detail,
                 description: description,
+                shopImageUrl: _shopImageUrl,
                 onBack: _pop,
               ),
             ),
@@ -296,11 +297,13 @@ class _ActivityHeader extends StatelessWidget {
   const _ActivityHeader({
     required this.detail,
     required this.description,
+    required this.shopImageUrl,
     required this.onBack,
   });
 
   final MemberActivityDetail detail;
   final String description;
+  final String shopImageUrl;
   final VoidCallback onBack;
 
   @override
@@ -326,7 +329,7 @@ class _ActivityHeader extends StatelessWidget {
             left: 0,
             top: 163,
             right: 0,
-            child: _StampCard(detail: detail),
+            child: _StampCard(detail: detail, shopImageUrl: shopImageUrl),
           ),
         ],
       ),
@@ -476,7 +479,7 @@ class _ActivityImagePlaceholder extends StatelessWidget {
 }
 
 class _StampCard extends StatelessWidget {
-  const _StampCard({required this.detail});
+  const _StampCard({required this.detail, required this.shopImageUrl});
 
   static const _columns = 5;
   static const _cellHeight = 56.0;
@@ -484,6 +487,7 @@ class _StampCard extends StatelessWidget {
   static const _surroundingHeight = 72.0;
 
   final MemberActivityDetail detail;
+  final String shopImageUrl;
 
   static int rowCountFor(int totalStamps) {
     if (totalStamps <= 0) return 1;
@@ -573,6 +577,7 @@ class _StampCard extends StatelessWidget {
       index: number,
       collected: stamp?.collected ?? number <= detail.collectedCount,
       isGift: stamp?.hasReward ?? false,
+      shopImageUrl: shopImageUrl,
     );
   }
 }
@@ -582,11 +587,13 @@ class _StampCell extends StatelessWidget {
     required this.index,
     required this.collected,
     required this.isGift,
+    required this.shopImageUrl,
   });
 
   final int index;
   final bool collected;
   final bool isGift;
+  final String shopImageUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -608,10 +615,14 @@ class _StampCell extends StatelessWidget {
             color: Colors.white,
             shape: BoxShape.circle,
           ),
-          child: const Icon(
-            Icons.ramen_dining_rounded,
-            color: Color(0xFFFF4E0A),
-            size: 32,
+          clipBehavior: Clip.antiAlias,
+          child: AppCachedNetworkImage(
+            imageUrl: shopImageUrl,
+            width: 48,
+            height: 48,
+            fit: BoxFit.contain,
+            placeholder: const _StampLogoPlaceholder(),
+            errorWidget: const _StampLogoPlaceholder(),
           ),
         ),
       );
@@ -641,6 +652,24 @@ class _StampCell extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
+    );
+  }
+}
+
+class _StampLogoPlaceholder extends StatelessWidget {
+  const _StampLogoPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return const ColoredBox(
+      color: Colors.white,
+      child: Center(
+        child: Icon(
+          Icons.storefront_outlined,
+          color: Color(0xFFFF8A55),
+          size: 26,
+        ),
+      ),
     );
   }
 }
