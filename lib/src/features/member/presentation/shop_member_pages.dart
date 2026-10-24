@@ -15,6 +15,7 @@ import '../../../core/storage/app_storage.dart';
 import '../../../core/ui/app_toast.dart';
 import '../../../shared/widgets/cached_image.dart';
 import '../../home/data/home_models.dart';
+import '../../shop_manager/data/coupon_writeoff_models.dart';
 
 void _safeMemberBack(BuildContext context, {String fallback = '/member'}) {
   if (context.canPop()) {
@@ -794,6 +795,337 @@ class _ShopMemberStaticPageState extends ConsumerState<ShopMemberStaticPage> {
           ),
           if (_loading) const _LoadingOverlay(),
         ],
+      ),
+    );
+  }
+}
+
+class CouponWriteoffDetailPage extends ConsumerStatefulWidget {
+  const CouponWriteoffDetailPage({required this.params, super.key});
+
+  final Map<String, String> params;
+
+  @override
+  ConsumerState<CouponWriteoffDetailPage> createState() =>
+      _CouponWriteoffDetailPageState();
+}
+
+class _CouponWriteoffDetailPageState
+    extends ConsumerState<CouponWriteoffDetailPage> {
+  static const _pageSize = 20;
+
+  late DateTime _startDate;
+  late DateTime _endDate;
+  int _pageNo = 1;
+  int _total = 0;
+  int _redeemedCount = 0;
+  bool _loading = true;
+  bool _loadingMore = false;
+  final _records = <CouponWriteoffRecord>[];
+
+  String get _shopId => widget.params['shopId'] ?? '';
+  String get _shopName => widget.params['shopName'] ?? '';
+
+  Map<String, List<CouponWriteoffRecord>> get _groupedRecords {
+    final groups = <String, List<CouponWriteoffRecord>>{};
+    for (final record in _records) {
+      groups.putIfAbsent(record.dateGroup, () => []).add(record);
+    }
+    return groups;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _endDate = _dateOnly(DateTime.now());
+    _startDate = _sameDayPreviousYear(_endDate);
+    _load(reset: true);
+  }
+
+  Future<void> _load({required bool reset}) async {
+    if (_shopId.isEmpty) {
+      if (mounted) {
+        setState(() => _loading = false);
+        _toast('缺少店铺信息');
+      }
+      return;
+    }
+    if (reset) {
+      _pageNo = 1;
+      _total = 0;
+    }
+    if (mounted) {
+      setState(() {
+        if (reset) {
+          _loading = true;
+        } else {
+          _loadingMore = true;
+        }
+      });
+    }
+    try {
+      final raw = await ref
+          .read(apiClientProvider)
+          .get(
+            TuanTuanEndpoints.couponWriteoffPage,
+            query: {
+              'shopId': _shopId,
+              'startDate': _dateHyphen(_startDate),
+              'endDate': _dateHyphen(_endDate),
+              'pageNo': _pageNo,
+              'pageSize': _pageSize,
+            },
+          );
+      final envelope = ApiEnvelope.parse<CouponWriteoffPage>(
+        raw,
+        CouponWriteoffPage.fromRaw,
+      );
+      if (!mounted) return;
+      if (!envelope.isSuccess || envelope.data == null) {
+        _toast(envelope.message ?? '获取失败');
+        setState(() {
+          if (reset) _records.clear();
+          _loading = false;
+          _loadingMore = false;
+        });
+        return;
+      }
+      final page = envelope.data!;
+      setState(() {
+        if (reset) _records.clear();
+        _records.addAll(page.list);
+        _total = page.total;
+        _redeemedCount = page.redeemedCount;
+        _loading = false;
+        _loadingMore = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      _toast('获取失败,请检查网络连接');
+      setState(() {
+        if (reset) _records.clear();
+        _loading = false;
+        _loadingMore = false;
+      });
+    }
+  }
+
+  void _maybeLoadMore(ScrollNotification notification) {
+    if (_loading || _loadingMore || _records.length >= _total) return;
+    if (notification.metrics.extentAfter > 160) return;
+    _pageNo += 1;
+    _load(reset: false);
+  }
+
+  Future<void> _chooseDate() async {
+    final result = await showModalBottomSheet<_DateRangeValue>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.55),
+      builder: (context) =>
+          _DateRangePickerSheet(startDate: _startDate, endDate: _endDate),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _startDate = result.startDate;
+      _endDate = result.endDate;
+    });
+    await _load(reset: true);
+  }
+
+  void _toast(String message) {
+    AppToast.show(context, message);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateLabel = '${_dateSlash(_startDate)}-${_dateSlash(_endDate)}';
+    final groupedRecords = _groupedRecords;
+    return Scaffold(
+      backgroundColor: AppTheme.pageBg,
+      appBar: _SimpleAppBar(
+        title: _shopName,
+        onBack: () => _safeMemberBack(context, fallback: '/shop-manager'),
+      ),
+      body: Stack(
+        children: [
+          Column(
+            children: [
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.all(10),
+                padding: const EdgeInsets.fromLTRB(12, 15, 12, 16),
+                decoration: BoxDecoration(
+                  gradient: AppTheme.brandGradient,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.brand.withValues(alpha: 0.35),
+                      blurRadius: 7,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _StatisticChip(
+                      icon: Icons.calendar_month,
+                      text: dateLabel,
+                      onTap: _chooseDate,
+                    ),
+                    const SizedBox(height: 15),
+                    const Text(
+                      '已核销优惠券',
+                      style: TextStyle(color: Colors.white, fontSize: 14),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$_redeemedCount 张',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 25,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    _maybeLoadMore(notification);
+                    return false;
+                  },
+                  child: RefreshIndicator(
+                    color: AppTheme.brand,
+                    onRefresh: () => _load(reset: true),
+                    child: _records.isEmpty && !_loading
+                        ? const _SimpleEmpty()
+                        : ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(10, 0, 10, 20),
+                            children: [
+                              for (final entry in groupedRecords.entries)
+                                _CouponWriteoffGroupCard(
+                                  date: entry.key,
+                                  records: entry.value,
+                                ),
+                              _LoadMoreText(
+                                loadingMore: _loadingMore,
+                                noMore: _records.length >= _total,
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_loading) const _LoadingOverlay(),
+        ],
+      ),
+    );
+  }
+}
+
+class _CouponWriteoffGroupCard extends StatelessWidget {
+  const _CouponWriteoffGroupCard({required this.date, required this.records});
+
+  final String date;
+  final List<CouponWriteoffRecord> records;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+            child: Text(
+              date,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ),
+          for (final record in records)
+            _CouponWriteoffRecordRow(record: record),
+        ],
+      ),
+    );
+  }
+}
+
+class _CouponWriteoffRecordRow extends StatelessWidget {
+  const _CouponWriteoffRecordRow({required this.record});
+
+  final CouponWriteoffRecord record;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: Color(0xFFF5F5F5))),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: AppTheme.brandGradient,
+              ),
+              child: const Text(
+                '券',
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                children: [
+                  _HistoryLine(
+                    left: record.displayCouponName,
+                    right: '已核销',
+                    rightColor: AppTheme.brand,
+                    bigRight: true,
+                  ),
+                  _HistoryLine(left: '获取方式', right: record.sourceText),
+                  _HistoryLine(
+                    left: '获取时间',
+                    right: record.receivedTime.isEmpty
+                        ? '未记录'
+                        : record.receivedTime,
+                  ),
+                  _HistoryLine(
+                    left: '核销时间',
+                    right: record.writeoffTime.isEmpty
+                        ? '未记录'
+                        : record.writeoffTime,
+                  ),
+                  _HistoryLine(left: '持券人', right: record.holderText),
+                  _HistoryLine(left: '核销人', right: record.operatorText),
+                  if (record.contentText.isNotEmpty)
+                    _HistoryLine(left: '券内容', right: record.contentText),
+                  if (record.activityName.isNotEmpty)
+                    _HistoryLine(left: '来源活动', right: record.activityName),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2938,6 +3270,11 @@ String _dateHyphen(DateTime date) {
 
 DateTime _dateOnly(DateTime date) {
   return DateTime(date.year, date.month, date.day);
+}
+
+DateTime _sameDayPreviousYear(DateTime date) {
+  final day = date.day.clamp(1, _daysInMonth(date.year - 1, date.month));
+  return DateTime(date.year - 1, date.month, day);
 }
 
 int _daysInMonth(int year, int month) {

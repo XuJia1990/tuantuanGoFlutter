@@ -288,6 +288,16 @@ class _ShopManageDetailPageState extends ConsumerState<ShopManageDetailPage> {
                   ).toString(),
                 ),
               ),
+              const Divider(height: 1, color: Color(0xFFF7F7F7)),
+              _ManageMenuItem(
+                title: '会员优惠券核销详情',
+                onTap: () => context.push(
+                  Uri(
+                    path: '/coupon-writeoff-detail',
+                    queryParameters: {'shopName': _shopName, 'shopId': _shopId},
+                  ).toString(),
+                ),
+              ),
             ],
           ),
         ],

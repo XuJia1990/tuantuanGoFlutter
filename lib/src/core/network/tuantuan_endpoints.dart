@@ -39,6 +39,10 @@ class TuanTuanEndpoints {
   static const orderPage = '/app-api/go/order-mgmt/page';
   static const orderDetail = '/app-api/go/order-mgmt/get';
   static const writeOff = '/app-api/go/order-mgmt/updatewriteoffstatus';
+  static const couponWriteoffPage = '/app-api/go/coupon-writeoff/page';
+  static const couponWriteoffScopes = '/app-api/go/coupon-writeoff/scopes';
+  static const couponWriteoffOptions =
+      '/app-api/go/coupon-writeoff/coupon-options';
 
   static const memberCardList = '/app-api/go/member-info/getMemberCardList';
   static const activityList = '/app-api/go/activity/list';

@@ -203,6 +203,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
+        path: '/coupon-writeoff-detail',
+        builder: (context, state) {
+          return CouponWriteoffDetailPage(params: state.uri.queryParameters);
+        },
+      ),
+      GoRoute(
         path: '/member-activities',
         builder: (context, state) {
           return MemberActivityListPage(
