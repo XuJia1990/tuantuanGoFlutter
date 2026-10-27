@@ -25,10 +25,16 @@ import '../../features/seal_debug/presentation/seal_debug_page.dart';
 import '../../features/shop_manager/presentation/shop_manager_page.dart';
 import '../../features/shell/presentation/app_shell.dart';
 import '../../features/splash/presentation/ad_webview_page.dart';
+import '../../core/payment/alipay_pay_service.dart';
+import 'alipay_return_guard.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
+    onEnter: alipayReturnGuard(
+      checkPendingPayment: () =>
+          ref.read(alipayReturnRevisionProvider.notifier).bump(),
+    ),
     routes: [
       ShellRoute(
         builder: (context, state, child) {

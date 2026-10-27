@@ -58,6 +58,7 @@ class TuanTuanEndpoints {
       '/app-api/go/member-order/getMemberOrderListByShopId';
   static const pointRate = '/app-api/go/apppointRate/get';
   static const createMember = '/app-api/go/member-order/create_1_2_0';
+  static const createAlipayMember = '/app-api/go/member-order/create';
   static const chargeMember = '/app-api/go/member-order/charge';
   static const refundOrder = '/app-api/go/member-order/refund';
   static const payOrder = '/app-api/go/member-order/pay';

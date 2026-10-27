@@ -11,11 +11,13 @@ import 'package:go_router/go_router.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
+import '../../../core/payment/alipay_pay_service.dart';
 import '../../../core/payment/wechat_pay_service.dart';
 import '../../../core/storage/app_storage.dart';
 import '../../../core/ui/app_toast.dart';
 import '../../../shared/widgets/cached_image.dart';
 import '../../home/data/home_models.dart';
+import 'widgets/alipay_recharge_status_view.dart';
 
 class MemberRechargePage extends ConsumerStatefulWidget {
   const MemberRechargePage({required this.params, this.extraShops, super.key});
@@ -53,6 +55,12 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
   Map<String, dynamic>? _pendingChargeQuery;
   String? _pendingMemberOrderId;
   bool _checkingWechatStatus = false;
+  AlipayPayment? _pendingAlipayPayment;
+  bool _openingAlipayBrowser = false;
+  String? _alipayBrowserError;
+  bool _checkingAlipayStatus = false;
+  bool _alipayPaymentConfirmed = false;
+  String? _alipayStatusMessage;
 
   int get _type => int.tryParse(widget.params['type'] ?? '1') ?? 1;
   int get _isShopCharge =>
@@ -64,11 +72,15 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
   String get _routeUserId => widget.params['userId'] ?? '';
   String get _routeNumber => widget.params['number'] ?? '';
   bool get _needsShopSelection => _isShopCharge == 0 && _routeShopId.isEmpty;
+  bool get _isOnlineAlipay => _isShopCharge == 0 && _activePayId == 25;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    ref.listenManual<int>(alipayReturnRevisionProvider, (_, _) {
+      unawaited(_checkPendingAlipayPay(source: 'payment_return_link'));
+    });
     _activePayId = _isShopCharge == 1 ? 23 : 24;
     _paySubscription = WeChatPayService.instance.fluwx.addSubscriber(
       _handleWeChatResponse,
@@ -88,6 +100,10 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      if (_pendingAlipayPayment != null) {
+        unawaited(_checkPendingAlipayPay(source: 'app_resumed'));
+        return;
+      }
       unawaited(_checkPendingWechatPay(source: 'app_resumed'));
     }
   }
@@ -187,7 +203,10 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
       setState(() {
         _payList
           ..clear()
-          ..add(const _PayCategory(categoryId: 24, categoryName: '微信'));
+          ..addAll(const [
+            _PayCategory(categoryId: 24, categoryName: '微信'),
+            _PayCategory(categoryId: 25, categoryName: '支付宝'),
+          ]);
       });
       return;
     }
@@ -283,6 +302,15 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
       _toast('请选择充值方式');
       return;
     }
+    if (_isOnlineAlipay) {
+      final amount = int.tryParse(
+        (_type == 1 ? _amountController.text : _routeNumber).trim(),
+      );
+      if (amount == null || amount <= 0) {
+        _toast('支付宝充值金额请输入正整数');
+        return;
+      }
+    }
     if (_isShopCharge == 1) {
       final verified = await _confirmPayPassword();
       if (!verified) return;
@@ -328,6 +356,11 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
       _createFail = false;
       _failMsg = '';
     });
+
+    if (_isOnlineAlipay) {
+      await _createAlipayOrder();
+      return;
+    }
 
     final data = <String, dynamic>{
       'isShopCharge': _isShopCharge,
@@ -386,6 +419,165 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
       );
       _showFail('充值失败');
     }
+  }
+
+  Future<void> _createAlipayOrder() async {
+    try {
+      final userId = int.tryParse(_routeUserId);
+      final chargeUserId = int.tryParse(_user.userId);
+      final shopId = int.tryParse(_chargeShopId);
+      if (shopId == null) {
+        throw const AlipayPayException('充值店铺信息无效，请重新选择');
+      }
+      final raw = await ref
+          .read(apiClientProvider)
+          .post(
+            TuanTuanEndpoints.createAlipayMember,
+            data: {
+              'chargeWay': '25',
+              'chargeMoney': int.parse(
+                (_type == 1 ? _amountController.text : _routeNumber).trim(),
+              ),
+              'isShopCharge': 0,
+              'chargeShopId': shopId,
+              'chargeUserId': ?chargeUserId,
+              // Omit empty userId so the server can use the authenticated header.
+              'userId': ?userId,
+              'remark': _cleanRemarkForSubmit(_remark),
+            },
+          );
+      if (!mounted) return;
+      final payment = AlipayPayment.fromResponse(raw);
+      setState(() => _pendingAlipayPayment = payment);
+      _logMemberPay('alipay_order_created', {
+        'memberOrderId': payment.memberOrderId,
+        'redirectHost': payment.redirectUri.host,
+      });
+      await _openAlipayBrowser();
+    } catch (error, stackTrace) {
+      _logMemberPay(
+        'alipay_create_exception',
+        {},
+        error: error,
+        stackTrace: stackTrace,
+      );
+      _showFail(error is AlipayPayException ? error.message : '创建支付宝充值订单失败');
+    }
+  }
+
+  Future<void> _openAlipayBrowser() async {
+    final payment = _pendingAlipayPayment;
+    if (payment == null || _openingAlipayBrowser || _alipayPaymentConfirmed) {
+      return;
+    }
+    setState(() {
+      _openingAlipayBrowser = true;
+      _alipayBrowserError = null;
+    });
+    try {
+      await ref.read(alipayPayServiceProvider).openPaymentPage(payment);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _alipayBrowserError = error is AlipayPayException
+            ? error.message
+            : '无法打开浏览器，请重试';
+      });
+    } finally {
+      if (mounted) setState(() => _openingAlipayBrowser = false);
+    }
+  }
+
+  Future<void> _checkPendingAlipayPay({
+    required String source,
+    bool retryCharge = false,
+  }) async {
+    final payment = _pendingAlipayPayment;
+    if (payment == null ||
+        _checkingAlipayStatus ||
+        (_alipayPaymentConfirmed && !retryCharge)) {
+      return;
+    }
+    setState(() {
+      _checkingAlipayStatus = true;
+      _alipayStatusMessage = null;
+    });
+    try {
+      for (var attempt = 1; attempt <= 3; attempt++) {
+        // This is the existing member-order payment check used by WeChat.
+        // Never confirm a recharge based on browser return or the user's tap.
+        final raw = await ref
+            .read(apiClientProvider)
+            .post(
+              TuanTuanEndpoints.wechatChargeOrderStatus,
+              data: {'memberOrderId': payment.memberOrderId},
+            );
+        final envelope = ApiEnvelope.parse<Map<String, dynamic>>(
+          raw,
+          (value) => value is Map ? Map<String, dynamic>.from(value) : {},
+        );
+        if (!mounted) return;
+        final isFinished = envelope.data?['isFinished'] == true;
+        _logMemberPay('alipay_status_checked', {
+          'source': source,
+          'attempt': attempt,
+          'memberOrderId': payment.memberOrderId,
+          'success': envelope.isSuccess,
+          'isFinished': isFinished,
+          'message': envelope.message,
+        });
+        if (!envelope.isSuccess) {
+          setState(() {
+            _alipayStatusMessage =
+                '支付结果查询失败：${envelope.message?.trim().isNotEmpty == true ? envelope.message : '请稍后重试'}\n'
+                '已付款请勿重复支付，可稍后重试确认';
+          });
+          return;
+        }
+        if (isFinished) {
+          setState(() => _alipayPaymentConfirmed = true);
+          await _chargeMember({
+            'isCreateFlg': _type == 2,
+            'memberOrderId': payment.memberOrderId,
+            'userId': _user.userId,
+          });
+          if (!mounted) return;
+          setState(() {
+            if (_createSuccess) {
+              _pendingAlipayPayment = null;
+            } else {
+              _alipayStatusMessage = '支付已确认，充值确认未完成：$_failMsg\n请重试确认充值，无需再次付款';
+            }
+          });
+          return;
+        }
+        if (attempt < 3) {
+          await Future<void>.delayed(const Duration(seconds: 1));
+          if (!mounted) return;
+        }
+      }
+      setState(() {
+        _alipayStatusMessage = '暂未确认支付结果，到账通知可能有延迟\n已付款请勿重复支付，可稍后重试确认';
+      });
+    } catch (error, stackTrace) {
+      _logMemberPay(
+        'alipay_confirm_exception',
+        {'source': source, 'memberOrderId': payment.memberOrderId},
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (!mounted) return;
+      setState(() {
+        _alipayStatusMessage = '支付结果确认失败，请检查网络后重试\n已付款请勿重复支付';
+      });
+    } finally {
+      if (mounted) setState(() => _checkingAlipayStatus = false);
+    }
+  }
+
+  void _returnToMemberAfterAlipay() {
+    ref.read(authRevisionProvider.notifier).bump();
+    _finishSuccess();
   }
 
   Future<void> _startWechatPay(
@@ -448,7 +640,9 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
   }
 
   Future<void> _handleWeChatResponse(WeChatResponse response) async {
-    if (response is! WeChatPaymentResponse) return;
+    if (response is! WeChatPaymentResponse || _pendingMemberOrderId == null) {
+      return;
+    }
     _logMemberPay('wechat_response', {
       'isSuccessful': response.isSuccessful,
       'errCode': response.errCode,
@@ -815,6 +1009,21 @@ class _MemberRechargePageState extends ConsumerState<MemberRechargePage>
   }
 
   Widget _buildPayResult() {
+    final alipayPayment = _pendingAlipayPayment;
+    if (alipayPayment != null) {
+      return AlipayRechargeStatusView(
+        amount: _type == 1 ? _amountController.text : _routeNumber,
+        orderId: alipayPayment.memberOrderId,
+        openingBrowser: _openingAlipayBrowser,
+        checking: _checkingAlipayStatus,
+        paymentConfirmed: _alipayPaymentConfirmed,
+        message: _alipayStatusMessage ?? _alipayBrowserError,
+        onConfirm: () =>
+            _checkPendingAlipayPay(source: 'confirm_button', retryCharge: true),
+        onOpenBrowser: _openAlipayBrowser,
+        onReturn: _returnToMemberAfterAlipay,
+      );
+    }
     if (!_createSuccess && !_createFail) {
       return const _PayStateView(
         icon: CircularProgressIndicator(color: AppTheme.brand),
