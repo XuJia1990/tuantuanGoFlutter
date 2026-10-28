@@ -838,7 +838,7 @@ class _CouponWriteoffDetailPageState
   void initState() {
     super.initState();
     _endDate = _dateOnly(DateTime.now());
-    _startDate = _sameDayPreviousYear(_endDate);
+    _startDate = _endDate;
     _load(reset: true);
   }
 
@@ -3270,11 +3270,6 @@ String _dateHyphen(DateTime date) {
 
 DateTime _dateOnly(DateTime date) {
   return DateTime(date.year, date.month, date.day);
-}
-
-DateTime _sameDayPreviousYear(DateTime date) {
-  final day = date.day.clamp(1, _daysInMonth(date.year - 1, date.month));
-  return DateTime(date.year - 1, date.month, day);
 }
 
 int _daysInMonth(int year, int month) {

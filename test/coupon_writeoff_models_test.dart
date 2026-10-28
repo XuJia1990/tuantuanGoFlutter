@@ -18,6 +18,7 @@ void main() {
           'shopName': '上野店',
           'userNickname': '顾客',
           'userMobile': '+81****5678',
+          'isShopMember': true,
           'writeoffUserNickname': '店员',
           'source': 'ACTIVITY_REWARD',
           'activityName': '集章活动',
@@ -31,7 +32,8 @@ void main() {
     expect(page.redeemedCount, 1);
     expect(page.list.single.dateGroup, '2026-10-21');
     expect(page.list.single.sourceText, '活动奖励');
-    expect(page.list.single.holderText, '顾客  +81****5678');
+    expect(page.list.single.isShopMember, isTrue);
+    expect(page.list.single.holderText, '顾客【V】  +81****5678');
     expect(page.list.single.operatorText, '店员');
     expect(page.list.single.contentText, '整龙虾 x1份');
   });
@@ -47,6 +49,7 @@ void main() {
     expect(record.displayCouponName, '优惠券 #7');
     expect(record.dateGroup, '未记录日期');
     expect(record.sourceText, '未记录来源');
+    expect(record.isShopMember, isFalse);
     expect(record.holderText, '未记录');
     expect(record.operatorText, '未记录');
   });

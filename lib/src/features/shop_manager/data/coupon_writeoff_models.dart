@@ -49,6 +49,7 @@ class CouponWriteoffRecord {
     required this.shopName,
     required this.userNickname,
     required this.userMobile,
+    required this.isShopMember,
     required this.writeoffUserNickname,
     required this.source,
     required this.activityName,
@@ -64,6 +65,7 @@ class CouponWriteoffRecord {
   final String shopName;
   final String userNickname;
   final String userMobile;
+  final bool isShopMember;
   final String writeoffUserNickname;
   final String source;
   final String activityName;
@@ -90,11 +92,14 @@ class CouponWriteoffRecord {
   };
 
   String get holderText {
-    if (userNickname.isNotEmpty && userMobile.isNotEmpty) {
-      return '$userNickname  $userMobile';
+    final nickname = userNickname.isEmpty
+        ? ''
+        : '$userNickname${isShopMember ? '【V】' : ''}';
+    if (nickname.isNotEmpty && userMobile.isNotEmpty) {
+      return '$nickname  $userMobile';
     }
-    return userNickname.isNotEmpty
-        ? userNickname
+    return nickname.isNotEmpty
+        ? nickname
         : userMobile.isNotEmpty
         ? userMobile
         : '未记录';
@@ -128,6 +133,7 @@ class CouponWriteoffRecord {
       shopName: _text(json['shopName']),
       userNickname: _text(json['userNickname']),
       userMobile: _text(json['userMobile']),
+      isShopMember: json['isShopMember'] == true,
       writeoffUserNickname: _text(json['writeoffUserNickname']),
       source: _text(json['source']),
       activityName: _text(json['activityName']),
