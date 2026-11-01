@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:fluwx/fluwx.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,10 +7,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/payment/alipay_pay_service.dart';
 import '../../../core/payment/wechat_pay_service.dart';
 import '../../../core/network/tuantuan_endpoints.dart';
 import '../../../core/ui/app_toast.dart';
 import '../../../shared/widgets/cached_image.dart';
+import '../../../shared/widgets/alipay_payment_status_view.dart';
+import '../data/coupon_alipay_gateway.dart';
 import '../data/home_models.dart';
 
 class SubmitOrderPage extends ConsumerStatefulWidget {
@@ -21,7 +26,8 @@ class SubmitOrderPage extends ConsumerStatefulWidget {
   ConsumerState<SubmitOrderPage> createState() => _SubmitOrderPageState();
 }
 
-class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
+class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage>
+    with WidgetsBindingObserver {
   final _exchangeCodeController = TextEditingController();
   _SubmitCoupon? _coupon;
   FluwxCancelable? _paySubscription;
@@ -31,13 +37,28 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
   bool _payFailed = false;
   String? _error;
   int _payChoose = 1;
+  AlipayPayment? _pendingAlipay;
+  String? _alipayOrderId;
+  CouponAlipayGateway? _pendingAlipayGateway;
+  bool _openingAlipay = false;
+  bool _checkingAlipay = false;
+  String? _alipayMessage;
 
   bool get _isExchangeCodePay => _payChoose == 3;
-  String get _bottomTitle => _isExchangeCodePay ? '兑换码支付' : '微信支付';
+  bool get _isAlipay => _payChoose == 2;
+  String get _bottomTitle => _isExchangeCodePay
+      ? '兑换码支付'
+      : _isAlipay
+      ? '支付宝支付'
+      : '微信支付';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    ref.listenManual<int>(alipayReturnRevisionProvider, (_, _) {
+      unawaited(_checkAlipay());
+    });
     _paySubscription = WeChatPayService.instance.fluwx.addSubscriber(
       _handleWeChatResponse,
     );
@@ -46,9 +67,15 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _paySubscription?.cancel();
     _exchangeCodeController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_checkAlipay());
   }
 
   Future<void> _loadCoupon() async {
@@ -109,7 +136,104 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
       _payLoading = true;
       _payFailed = false;
     });
-    await _createOrder();
+    if (_isAlipay) {
+      await _createAlipayPayment();
+    } else {
+      await _createOrder();
+    }
+  }
+
+  Future<void> _createAlipayPayment() async {
+    try {
+      final gateway = ref.read(couponAlipayGatewayProvider);
+      final orderId = await gateway.createOrder(widget.couponId);
+      if (!mounted) return;
+      setState(() {
+        _alipayOrderId = orderId;
+        _pendingAlipayGateway = gateway;
+        _payingOrderId = null;
+        _payLoading = false;
+      });
+      await _openAlipay();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _payLoading = false);
+      _showPageToast(error is AlipayPayException ? error.message : '创建支付宝订单失败');
+    }
+  }
+
+  Future<void> _openAlipay() async {
+    final orderId = _alipayOrderId;
+    final gateway = _pendingAlipayGateway;
+    if (orderId == null ||
+        gateway == null ||
+        _openingAlipay ||
+        _checkingAlipay) {
+      return;
+    }
+    setState(() {
+      _openingAlipay = true;
+      _alipayMessage = null;
+    });
+    try {
+      // Keep the created order even when payinfo fails; retries use the same ID.
+      final payment = _pendingAlipay ?? await gateway.getPayment(orderId);
+      if (!mounted) return;
+      setState(() => _pendingAlipay = payment);
+      await ref.read(alipayPayServiceProvider).openPaymentPage(payment);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _alipayMessage = error is AlipayPayException
+              ? error.message
+              : '无法打开浏览器，请重试';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _openingAlipay = false);
+    }
+  }
+
+  Future<void> _checkAlipay() async {
+    final orderId = _alipayOrderId;
+    final gateway = _pendingAlipayGateway;
+    if (orderId == null || gateway == null || _checkingAlipay) return;
+    setState(() {
+      _checkingAlipay = true;
+      _alipayMessage = null;
+    });
+    try {
+      final paid = await gateway.isPaid(orderId);
+      if (!mounted) return;
+      if (paid) {
+        setState(() {
+          _pendingAlipay = null;
+          _alipayOrderId = null;
+        });
+        context.replace(
+          Uri(
+            path: '/coupon-order-detail',
+            queryParameters: {
+              'bgc': widget.bgc,
+              'type': '1',
+              'orderId': orderId,
+            },
+          ).toString(),
+        );
+      } else {
+        setState(() {
+          _alipayMessage = '暂未确认支付结果，到账通知可能有延迟\n已付款请勿重复支付，可稍后重试确认';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _alipayMessage = '支付结果确认失败，请检查网络后重试\n已付款请勿重复支付';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _checkingAlipay = false);
+    }
   }
 
   Future<void> _createOrder() async {
@@ -221,7 +345,7 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
   }
 
   Future<void> _handleWeChatResponse(WeChatResponse response) async {
-    if (response is! WeChatPaymentResponse) return;
+    if (response is! WeChatPaymentResponse || _isAlipay) return;
     final orderId = _payingOrderId;
     if (orderId == null || orderId.isEmpty) return;
     if (response.isSuccessful) {
@@ -299,6 +423,25 @@ class _SubmitOrderPageState extends ConsumerState<SubmitOrderPage> {
 
   @override
   Widget build(BuildContext context) {
+    final alipayOrderId = _alipayOrderId;
+    if (alipayOrderId != null) {
+      return Scaffold(
+        backgroundColor: AppTheme.pageBg,
+        appBar: AppBar(title: const Text('优惠券支付')),
+        body: AlipayPaymentStatusView(
+          couponPurchase: true,
+          amount: _money(_coupon?.couponPrice ?? 0),
+          orderId: alipayOrderId,
+          openingBrowser: _openingAlipay,
+          checking: _checkingAlipay,
+          paymentConfirmed: false,
+          message: _alipayMessage,
+          onConfirm: () => unawaited(_checkAlipay()),
+          onOpenBrowser: () => unawaited(_openAlipay()),
+          onReturn: () => context.replace('/purchased-coupons'),
+        ),
+      );
+    }
     if (_payLoading) {
       return Scaffold(
         backgroundColor: Colors.white,
@@ -550,6 +693,17 @@ class _PayChooseCard extends StatelessWidget {
               height: 26,
             ),
             title: '微信支付',
+          ),
+          const SizedBox(height: 10),
+          _PayChooseItem(
+            active: payChoose == 2,
+            onTap: () => onChoose(2),
+            leading: Image.asset(
+              'assets/static/image/zfb.png',
+              width: 26,
+              height: 26,
+            ),
+            title: '支付宝支付',
           ),
           if (showExchangeCode) ...[
             const SizedBox(height: 10),

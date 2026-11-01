@@ -688,6 +688,7 @@ class _CouponOrderDetail {
 
   String get tradeMethodText {
     if (isRedeemCodePayment) return '兑换码支付';
+    if (tradMethod == '25') return '支付宝支付';
     return '微信支付';
   }
 

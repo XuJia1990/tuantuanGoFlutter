@@ -29,7 +29,8 @@ OnEnter alipayReturnGuard({
   // A normal deep-link navigation would dispose the recharge page and lose
   // the pending order. Keep the existing page and trigger a server check.
   return Block.then(() {
-    if (current.uri.path == '/member-recharge') {
+    if (current.uri.path == '/member-recharge' ||
+        current.uri.path == '/submit-order') {
       checkPendingPayment();
     } else {
       router.go('/member');

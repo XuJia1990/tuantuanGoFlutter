@@ -62,9 +62,22 @@ flutter build ios --dart-define=APP_ENV=prod
 
 ### Alipay return to app
 
+Coupon checkout offers WeChat, Alipay and (where supported) exchange codes.
+The coupon Alipay adapter follows the UAT OpenAPI contract:
+`POST /app-api/go/order-mgmt/create?couponId=...&tradMethod=25`, then
+`GET /app-api/go/order-mgmt/payinfo?orderId=...`. The latter returns the hosted
+checkout in `redirect_url` or `code_url`. It does not use member recharge APIs.
+Returning to the app or tapping confirmation queries the existing coupon
+`paystatus` endpoint; only its successful server confirmation opens the purchased
+coupon. A failed URL lookup, browser launch or status check preserves the order
+for retry, without automatically deleting it or creating a replacement order.
+The details page labels `tradMethod=25` as Alipay.
+
+Contract reference: https://api-uat.tuantuan-go.com/v3/api-docs
+
 The app accepts `tuantuango://app/payment-return` on iOS and Android. When the
-original recharge page is still open, this link preserves that page and checks
-the pending order with the server. Otherwise it opens the member page. The link
+original recharge or coupon checkout page is still open, this link preserves that
+page and checks the pending order with the server. Otherwise it opens the member page. The link
 itself never marks an order as paid. An app restart cannot restore a pending
 order that only exists in the previous recharge page's memory.
 

@@ -15,10 +15,20 @@ final alipayReturnRevisionProvider =
 
 /// EC supplies a hosted checkout URL, rather than native Alipay SDK parameters.
 class AlipayPayment {
-  const AlipayPayment({required this.memberOrderId, required this.redirectUri});
+  const AlipayPayment({
+    required String memberOrderId,
+    required this.redirectUri,
+  }) : orderId = memberOrderId;
 
-  final String memberOrderId;
+  const AlipayPayment.forOrder({
+    required this.orderId,
+    required this.redirectUri,
+  });
+
+  final String orderId;
   final Uri redirectUri;
+
+  String get memberOrderId => orderId;
 
   factory AlipayPayment.fromResponse(Object? response) {
     if (response is! Map) {
@@ -51,6 +61,19 @@ class AlipayPayment {
     if (payInfo is! Map) {
       throw const AlipayPayException('支付宝支付信息缺失');
     }
+    return AlipayPayment.fromPayInfo(
+      orderId: orderId,
+      payInfo: Map<String, dynamic>.from(payInfo),
+    );
+  }
+
+  factory AlipayPayment.fromPayInfo({
+    required String orderId,
+    required Map<String, dynamic> payInfo,
+  }) {
+    if (orderId.trim().isEmpty) {
+      throw const AlipayPayException('支付宝订单号缺失');
+    }
     for (final key in ['return_code', 'result_code']) {
       final code = payInfo[key]?.toString();
       if (code != null && code != 'SUCCESS') {
@@ -69,7 +92,7 @@ class AlipayPayment {
         uri.userInfo.isNotEmpty) {
       throw const AlipayPayException('支付宝支付地址无效，请稍后重试');
     }
-    return AlipayPayment(memberOrderId: orderId, redirectUri: uri);
+    return AlipayPayment.forOrder(orderId: orderId, redirectUri: uri);
   }
 }
 

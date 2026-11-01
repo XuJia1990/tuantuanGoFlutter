@@ -16,6 +16,10 @@ GoRouter _router({
       path: '/member-recharge',
       builder: (_, _) => const Scaffold(body: TextField()),
     ),
+    GoRoute(
+      path: '/submit-order',
+      builder: (_, _) => const Scaffold(body: TextField()),
+    ),
   ],
 );
 
@@ -44,12 +48,13 @@ void main() {
     }
   });
 
-  testWidgets(
-    'return link preserves the existing recharge page and its state',
-    (tester) async {
+  for (final path in ['/member-recharge', '/submit-order']) {
+    testWidgets('return link preserves $path and its pending order state', (
+      tester,
+    ) async {
       var checks = 0;
       final router = _router(
-        initialLocation: '/member-recharge?shopId=1',
+        initialLocation: '$path?shopId=1',
         check: () => checks++,
       );
       addTearDown(router.dispose);
@@ -60,14 +65,11 @@ void main() {
       router.go('${AlipayReturnLink.appUrl}?status=success&memberOrderId=999');
       await tester.pumpAndSettle();
       expect(checks, 1);
-      expect(
-        router.routerDelegate.currentConfiguration.uri.path,
-        '/member-recharge',
-      );
+      expect(router.routerDelegate.currentConfiguration.uri.path, path);
       expect(tester.state(find.byType(TextField)), same(fieldState));
       expect(find.text('pending order state'), findsOneWidget);
-    },
-  );
+    });
+  }
 
   testWidgets(
     'a cold-start return link opens member page without a payment check',
