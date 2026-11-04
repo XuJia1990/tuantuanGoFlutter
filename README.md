@@ -63,8 +63,9 @@ flutter build ios --dart-define=APP_ENV=prod
 ### Alipay return to app
 
 Coupon checkout offers WeChat, Alipay and (where supported) exchange codes.
-The coupon Alipay adapter follows the UAT OpenAPI contract:
-`POST /app-api/go/order-mgmt/create?couponId=...&tradMethod=25`, then
+The coupon Alipay adapter creates orders with
+`POST /app-api/go/order-mgmt/create` and a JSON body containing
+`couponId` and `tradMethod: "25"`, then
 `GET /app-api/go/order-mgmt/payinfo?orderId=...`. The latter returns the hosted
 checkout in `redirect_url` or `code_url`. It does not use member recharge APIs.
 Returning to the app or tapping confirmation queries the existing coupon

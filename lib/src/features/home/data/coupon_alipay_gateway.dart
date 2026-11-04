@@ -25,12 +25,9 @@ class ApiCouponAlipayGateway implements CouponAlipayGateway {
 
   @override
   Future<String> createOrder(String couponId) async {
-    // UAT OpenAPI specifies query parameters, not a JSON request body.
     final raw = await _api.post(
-      Uri(
-        path: TuanTuanEndpoints.createOrder,
-        queryParameters: {'couponId': couponId, 'tradMethod': '25'},
-      ).toString(),
+      TuanTuanEndpoints.createOrder,
+      data: {'couponId': couponId, 'tradMethod': '25'},
     );
     final data = _paymentData(raw, '创建支付宝订单失败');
     final orderId = data['OrderMgmtId']?.toString().trim() ?? '';

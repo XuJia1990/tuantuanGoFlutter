@@ -51,8 +51,8 @@ class _CouponApi implements ApiClient {
     mutations.add(path);
     final uri = Uri.parse(path);
     expect(uri.path, TuanTuanEndpoints.createOrder);
-    expect(uri.queryParameters, {'couponId': 'coupon-9', 'tradMethod': '25'});
-    expect(data, isNull);
+    expect(uri.hasQuery, isFalse);
+    expect(data, {'couponId': 'coupon-9', 'tradMethod': '25'});
     return {
       'code': 200,
       'data': {'OrderMgmtId': '42'},
@@ -170,7 +170,9 @@ Future<void> _submit(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('uses documented coupon API with tradMethod 25', (tester) async {
+  testWidgets('sends couponId and tradMethod 25 in the JSON request body', (
+    tester,
+  ) async {
     final result = await _show(tester);
     expect(find.text('微信支付'), findsNWidgets(2));
     expect(find.text('兑换码'), findsOneWidget);
